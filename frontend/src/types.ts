@@ -46,6 +46,26 @@ export interface Milestone {
   repeats_yearly: boolean;
   notes: string;
 }
+export interface Maintenance {
+  id: number;
+  title: string;
+  notes: string;
+  period_value: number;
+  period_unit: "days" | "months";
+  remind_days: number;
+  active: boolean;
+  last_completed: string;
+  next_due: string;
+}
+export interface MaintenanceLog {
+  id: number;
+  maintenance_id: number;
+  completed_on: string;
+  notes: string;
+  cost_cents: number | null;
+  currency: string;
+  created_at: string;
+}
 export type Collection = "tasks" | "expenses" | "shows" | "milestones";
 export type RecordItem = Task | Expense | Show | Milestone;
 export interface Records {
@@ -53,5 +73,6 @@ export interface Records {
   expenses: Expense[];
   shows: Show[];
   milestones: Milestone[];
+  maintenance: Maintenance[];
 }
-export type Page = "today" | Collection | "profile" | "admin";
+export type Page = "today" | Collection | "maintenance" | "profile" | "admin";

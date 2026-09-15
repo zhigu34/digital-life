@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -74,3 +74,32 @@ class Milestone(Owned, Base):
     date: Mapped[date] = mapped_column(Date)
     repeats_yearly: Mapped[bool] = mapped_column(Boolean, default=False)
     notes: Mapped[str] = mapped_column(Text, default="")
+
+
+class Maintenance(Owned, Base):
+    __tablename__ = "maintenance"
+    title: Mapped[str] = mapped_column(String(120))
+    notes: Mapped[str] = mapped_column(Text, default="")
+    period_value: Mapped[int] = mapped_column(Integer)
+    period_unit: Mapped[str] = mapped_column(String(6))
+    remind_days: Mapped[int] = mapped_column(Integer, default=7)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_completed: Mapped[date] = mapped_column(Date)
+    next_due: Mapped[date] = mapped_column(Date)
+
+
+class MaintenanceLog(Base):
+    __tablename__ = "maintenance_logs"
+    __table_args__ = (
+        UniqueConstraint("maintenance_id", "completed_on", name="uq_maintenance_logs_date"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    maintenance_id: Mapped[int] = mapped_column(
+        ForeignKey("maintenance.id", ondelete="CASCADE"),
+        index=True,
+    )
+    completed_on: Mapped[date] = mapped_column(Date)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    cost_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    currency: Mapped[str] = mapped_column(String(3), default="CNY")
+    created_at: Mapped[datetime] = mapped_column(DateTime)

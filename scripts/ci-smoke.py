@@ -35,12 +35,30 @@ login = request('/api/auth/login', {'username': os.environ['E2E_ADMIN_USERNAME']
 if '--verify-persistence' in sys.argv:
     tasks = request('/api/tasks')
     assert any(task['title'] == 'CI persistence sentinel' for task in tasks), tasks
-    print('Existing account and task survived container recreation.')
+    items = request('/api/maintenance')
+    maintenance = next(item for item in items if item['title'] == 'CI filter sentinel')
+    assert maintenance['last_completed'] == '2000-03-31'
+    assert maintenance['next_due'] == '2000-04-30'
+    history = request(f"/api/maintenance/{maintenance['id']}/history")
+    assert len(history) == 2
+    assert history[0]['cost_cents'] == 12950
+    print('Account, task, recurring maintenance and completion history survived container recreation.')
 else:
     task = request('/api/tasks', {'title': 'CI persistence sentinel'}, login['csrf_token'])
     assert task['title'] == 'CI persistence sentinel'
+    maintenance = request('/api/maintenance', {
+        'title': 'CI filter sentinel', 'last_completed': '2000-01-31',
+        'period_value': 1, 'period_unit': 'months', 'remind_days': 14,
+    }, login['csrf_token'])
+    assert maintenance['next_due'] == '2000-02-29'
+    completed = request(f"/api/maintenance/{maintenance['id']}/complete", {
+        'completed_on': '2000-03-31', 'cost_cents': 12950, 'notes': 'CI replacement',
+    }, login['csrf_token'])
+    assert completed['next_due'] == '2000-04-30'
     exported = request('/api/export')
     assert any(t['id'] == task['id'] for t in exported['tasks'])
+    assert any(item['id'] == maintenance['id'] for item in exported['maintenance'])
+    assert len([row for row in exported['maintenance_logs'] if row['maintenance_id'] == maintenance['id']]) == 2
     container = subprocess.check_output(['docker', 'compose', 'ps', '-q', 'backend'], text=True).strip()
     details = json.loads(subprocess.check_output(['docker', 'inspect', container], text=True))[0]
     assert not (details['HostConfig'].get('PortBindings') or {}).get('8000/tcp')

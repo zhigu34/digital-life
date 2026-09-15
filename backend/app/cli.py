@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import UniqueConstraint, select
 from sqlalchemy.exc import IntegrityError
 
 from app.config import Settings
@@ -17,7 +17,7 @@ from app.models import Base, User
 from app.schemas import UserCreate
 from app.security import hash_password
 
-SCHEMA_REVISION = "0001"
+SCHEMA_REVISION = "0002"
 
 
 def create_admin(settings: Settings, username: str, password: str):
@@ -80,11 +80,28 @@ def validate_database(path: Path):
                     if bool(row[3]) != (not column.nullable) or bool(row[5]) != column.primary_key:
                         raise ValueError(f"Backup column constraints do not match table {name}")
                 foreign_keys = db.execute(f'PRAGMA foreign_key_list("{name}")').fetchall()
-                if name != "users" and not any(
-                    row[2:5] == ("users", "user_id", "id") and row[6] == "CASCADE"
-                    for row in foreign_keys
-                ):
+                actual_fks = {(row[3], row[2], row[4], row[6]) for row in foreign_keys}
+                expected_fks = {
+                    (fk.parent.name, fk.column.table.name, fk.column.name, fk.ondelete)
+                    for fk in table.foreign_keys
+                }
+                if actual_fks != expected_fks:
                     raise ValueError(f"Backup ownership constraint missing in table {name}")
+                unique_keys = set()
+                for index in db.execute(f'PRAGMA index_list("{name}")').fetchall():
+                    # A partial unique index only applies to rows matching its
+                    # WHERE clause, so it cannot satisfy a table-wide invariant.
+                    if index[2] and not index[4]:
+                        index_name = index[1].replace('"', '""')
+                        unique_keys.add(
+                            tuple(
+                                row[2] for row in db.execute(f'PRAGMA index_info("{index_name}")')
+                            )
+                        )
+                for constraint in table.constraints:
+                    if isinstance(constraint, UniqueConstraint):
+                        if tuple(constraint.columns.keys()) not in unique_keys:
+                            raise ValueError(f"Backup unique constraint missing in table {name}")
     except sqlite3.DatabaseError as error:
         raise ValueError("Backup is not a valid Digital Life SQLite database") from error
 

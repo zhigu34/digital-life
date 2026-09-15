@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import {
   LayoutDashboard,
+  Wrench,
+  History,
   CheckCheck,
   Wallet,
   Clapperboard,
@@ -30,6 +32,8 @@ import {
 } from "lucide-vue-next";
 const icons = {
   today: LayoutDashboard,
+  maintenance: Wrench,
+  history: History,
   tasks: CheckCheck,
   expenses: Wallet,
   shows: Clapperboard,

@@ -19,10 +19,12 @@
 - `backend/app/main.py`：应用生命周期、来源校验、缓存头与健康检查。
 - `backend/app/auth.py`、`security.py`：会话、CSRF、密码和个人设置。
 - `backend/app/admin.py`：管理员创建/停用账号、重置密码。
-- `backend/app/models.py`、`schemas.py`、`records.py`：数据模型、校验、四个业务集合和个人导出。
+- `backend/app/models.py`、`schemas.py`、`records.py`：数据模型、校验、原有业务集合和个人导出。
+- `backend/app/maintenance.py`、`maintenance_schemas.py`：周期维护、按实际日期计算的周期和带费用的完成历史。
 - `backend/app/database.py`、`backend/migrations/`：SQLite 与 Alembic 迁移。
 - `backend/app/cli.py`：管理员初始化、数据库迁移、一致性备份与离线恢复。
 - `frontend/src/App.vue`：登录状态、页面切换和数据加载；`views/`、`components/`：页面和交互组件。
+- `frontend/src/views/MaintenanceView.vue`：周期维护配置、完成与历史修正；日期由后端派生。
 - `frontend/src/domain.ts`：时区、日期、周年与固定花销计算；`api.ts`：Cookie/CSRF API 客户端。
 - `frontend/src/styles.css`：响应式与主题；`frontend/public/`：PWA 图标、清单、静态缓存。
 - `deploy`、`scripts/`、`docker-compose.yml`、Dockerfiles、`frontend/nginx.conf`：NAS 运行与维护。
@@ -89,6 +91,7 @@ E2E 会创建多个测试账号和生活记录；只对独立测试环境运行�
 - 金额以整数分存储，分币种统计；月均成本与本月应付分开。确认已付仅推进下次日期，不代表银行交易流水。
 - 周期扣费保留月末 anchor，例如 1/31 → 2/28 → 3/31。出生天数使用个人时区的日历日期；闰日周年在平年按 2/28 处理。
 - 时区输入须兼容浏览器 Intl，拒绝 Factory/localtime/posix/right 等系统专用名称；旧资料不能导致登录、导出或修复资料返回 500，日期显示应有 UTC 回退。
+- 周期维护与固定账单语义不同：维护按最新实际完成日顺延，补录不倒退，历史修正后重新取最大完成日期。同日重复须返回409；创建自动生成首条历史，删除事项级联删除历史。
 - 集数上限 1,000,000，资源 ID 限制在 SQLite 整数范围，避免通过输入校验后发生数据库溢出。
 
 ## 数据库、部署和恢复

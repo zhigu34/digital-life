@@ -2,7 +2,14 @@
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { api, ApiError, setCsrf } from "./api";
 import { calendarDate } from "./domain";
-import type { User, Records, Collection, Page, RecordItem } from "./types";
+import type {
+  User,
+  Records,
+  Collection,
+  Page,
+  RecordItem,
+  Maintenance,
+} from "./types";
 import AppIcon from "./components/AppIcon.vue";
 import RecordForm from "./components/RecordForm.vue";
 import LoginView from "./views/LoginView.vue";
@@ -10,6 +17,7 @@ import TodayView from "./views/TodayView.vue";
 import CollectionView from "./views/CollectionView.vue";
 import ProfileView from "./views/ProfileView.vue";
 import AdminView from "./views/AdminView.vue";
+import MaintenanceView from "./views/MaintenanceView.vue";
 const user = ref<User | null>(null),
   initializing = ref(true),
   loading = ref(false),
@@ -22,6 +30,7 @@ const records = reactive<Records>({
   expenses: [],
   shows: [],
   milestones: [],
+  maintenance: [],
 });
 const page = ref<Page>("today"),
   editing = ref<{ collection: Collection; item?: RecordItem } | null>(null),
@@ -36,6 +45,7 @@ const navigation: [Page, string, string][] = [
   ["expenses", "周期费用", ""],
   ["shows", "追剧片单", ""],
   ["milestones", "重要日子", ""],
+  ["maintenance", "周期维护", ""],
 ];
 const pageLabels: Record<Page, string> = {
   today: "今日概览",
@@ -43,6 +53,7 @@ const pageLabels: Record<Page, string> = {
   expenses: "周期费用",
   shows: "追剧片单",
   milestones: "重要日子",
+  maintenance: "周期维护",
   profile: "个人设置",
   admin: "账户管理",
 };
@@ -58,6 +69,7 @@ function clear() {
     expenses: [],
     shows: [],
     milestones: [],
+    maintenance: [],
   });
   editing.value = null;
   page.value = "today";
@@ -83,18 +95,27 @@ async function load() {
   loading.value = true;
   error.value = "";
   try {
-    const [tasks, expenses, shows, milestones] = await Promise.all([
-      api<Records["tasks"]>("/tasks"),
-      api<Records["expenses"]>("/expenses"),
-      api<Records["shows"]>("/shows"),
-      api<Records["milestones"]>("/milestones"),
-    ]);
+    const [tasks, expenses, shows, milestones, maintenance] = await Promise.all(
+      [
+        api<Records["tasks"]>("/tasks"),
+        api<Records["expenses"]>("/expenses"),
+        api<Records["shows"]>("/shows"),
+        api<Records["milestones"]>("/milestones"),
+        api<Records["maintenance"]>("/maintenance"),
+      ],
+    );
     if (version === accountVersion)
-      Object.assign(records, { tasks, expenses, shows, milestones });
+      Object.assign(records, {
+        tasks,
+        expenses,
+        shows,
+        milestones,
+        maintenance,
+      });
   } catch (e) {
-    handleError(e);
+    if (version === accountVersion) handleError(e);
   } finally {
-    loading.value = false;
+    if (version === accountVersion) loading.value = false;
   }
 }
 async function login(username: string, password: string) {
@@ -178,6 +199,18 @@ async function mutate(
   } finally {
     busy.value = false;
   }
+}
+async function removeMaintenance(item: Maintenance) {
+  if (
+    !window.confirm(`确定删除“${item.title}”及其全部完成历史？删除后无法恢复。`)
+  )
+    return;
+  await mutate(
+    `/maintenance/${item.id}`,
+    "DELETE",
+    undefined,
+    "维护事项及历史已删除",
+  );
 }
 function action(
   collection: Collection,
@@ -408,6 +441,16 @@ onUnmounted(() => {
         @edit="(item) => open(page as Collection, item)"
         @remove="(item) => remove(page as Collection, item)"
         @action="(id, kind, data) => action(page as Collection, id, kind, data)"
+      /><MaintenanceView
+        v-else-if="page === 'maintenance'"
+        :key="user.id"
+        :items="records.maintenance"
+        :today="today"
+        :parent-busy="busy"
+        @refresh="load"
+        @error="handleError"
+        @notice="notify"
+        @remove="removeMaintenance"
       /><ProfileView
         v-else-if="page === 'profile'"
         :user="user"
@@ -440,7 +483,9 @@ onUnmounted(() => {
                 ? "费用"
                 : id === "shows"
                   ? "追剧"
-                  : "日子"
+                  : id === "milestones"
+                    ? "日子"
+                    : "维护"
         }}</span>
       </button>
     </nav>

@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 
 from app.auth import Identity, authenticated, validated_patch
 from app.database import get_db
-from app.models import Expense, Milestone, Show, Task
+from app.maintenance_schemas import MaintenanceLogView, MaintenanceView
+from app.models import Expense, Maintenance, MaintenanceLog, Milestone, Show, Task
 from app.schemas import (
     MAX_EPISODES,
     ExpensePatch,
@@ -169,4 +170,21 @@ def export_data(identity: Identity = Depends(authenticated), db: Session = Depen
                 select(model).where(model.user_id == identity.user.id).order_by(model.id)
             )
         ]
+    data["maintenance"] = [
+        MaintenanceView.model_validate(row)
+        for row in db.scalars(
+            select(Maintenance)
+            .where(Maintenance.user_id == identity.user.id)
+            .order_by(Maintenance.id)
+        )
+    ]
+    data["maintenance_logs"] = [
+        MaintenanceLogView.model_validate(row)
+        for row in db.scalars(
+            select(MaintenanceLog)
+            .join(Maintenance)
+            .where(Maintenance.user_id == identity.user.id)
+            .order_by(MaintenanceLog.id)
+        )
+    ]
     return data

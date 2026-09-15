@@ -30,3 +30,13 @@ GET `/admin/users` → User[]. POST `{username,password,display_name}` → User 
 ## Server and operator CLI
 `GET /health` (outside /api) → `{status:'ok'}` only when database is usable, no private details.
 Backend CLI via `python -m app.cli`: `migrate`, `create-admin --username USER` (password via env DIGITAL_LIFE_ADMIN_PASSWORD or hidden prompt), `backup --output PATH`, `restore --input PATH` (offline only; runner responsibility stop backend). Database env `DIGITAL_LIFE_DATA_DIR` default ../data resolved; db filename digital-life.db. Cookie env `DIGITAL_LIFE_SECURE_COOKIE` default false for LAN; true with HTTPS. Session TTL 14 days. `DIGITAL_LIFE_TRUSTED_ORIGINS` optional comma-separated exact origins for reverse proxy HTTPS; derive origin from request scheme/host without blindly trusting forwarded headers. SQLite WAL, foreign keys, busy timeout. App startup runs idempotent migrations, never resets data or seeds a default password. CLI backup uses SQLite backup API; restore validates schema and integrity before replacement, removes stale WAL/SHM only while offline.
+
+## 周期维护（2026-09-15）
+
+完整字段和状态码见 `docs/superpowers/specs/2026-09-15-maintenance-design.md`。
+
+`GET/POST /api/maintenance`、`GET/PATCH/DELETE /api/maintenance/{id}` 提供独立账号的维护事项。创建必填 `title`、`last_completed`、`period_value`、`period_unit`（days/months）；默认 `notes=''`、`remind_days=7`、`active=true`。响应含服务器计算的 `last_completed` 和 `next_due`。PATCH 仅修改事项配置，日期通过历史维护。
+
+`POST /api/maintenance/{id}/complete` 接收 `completed_on`、可选 `cost_cents`、`currency`、`notes`，201 返回更新后的事项。`GET /api/maintenance/{id}/history` 返回按日期、ID倒序的历史；`PATCH /api/maintenance/{id}/history/{log_id}` 修改历史日期、费用、币种或备注，200 返回更新后的事项。同日重复409、未来/越界日期422、停用事项新增完成400、他人资源404。创建时生成首条历史，最新完成日期取全部历史最大值。DELETE 事项级联删除历史。
+
+`GET /api/export` 新增 `maintenance`、`maintenance_logs` 数组，仍仅含当前用户记录。
