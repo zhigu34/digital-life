@@ -1,0 +1,20 @@
+{
+  "id": "/",
+  "name": "Digital Life · 日常有序",
+  "short_name": "Digital Life",
+  "description": "让日常有序，让生活可见。你的私人生活工作区。",
+  "lang": "zh-CN",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f8f9f5",
+  "theme_color": "#315d49",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

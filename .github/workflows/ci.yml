@@ -1,0 +1,91 @@
+name: CI
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.11.14'
+          python-version: '3.12'
+      - run: uv sync --frozen --dev
+        working-directory: backend
+      - run: uv run ruff check . && uv run pytest
+        working-directory: backend
+      - name: Deployment behavior and shell syntax
+        run: |
+          bash -n deploy scripts/backup scripts/restore
+          python3 -m unittest discover -s tests/deploy -v
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npm test && npm run build
+        working-directory: frontend
+  docker-e2e:
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    timeout-minutes: 20
+    env:
+      DIGITAL_LIFE_ADMIN_PASSWORD: ci-only-test-password-2026
+      E2E_ADMIN_USERNAME: ciadmin
+      E2E_ADMIN_PASSWORD: ci-only-test-password-2026
+      E2E_BASE_URL: http://127.0.0.1:8090
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Deploy from clean checkout
+        run: |
+          ./deploy --check-only
+          ./deploy
+          docker compose exec -T -e DIGITAL_LIFE_ADMIN_PASSWORD backend python -m app.cli create-admin --username ciadmin
+      - name: Verify public entry and internal backend
+        run: |
+          curl --fail --silent http://127.0.0.1:8090/health
+          curl --fail --silent http://127.0.0.1:8090/ > /dev/null
+          python3 scripts/ci-smoke.py
+      - run: npm ci
+        working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - name: Desktop and mobile workflows
+        run: npm run test:e2e
+        working-directory: frontend
+      - name: Verify data survives container recreation
+        run: |
+          docker compose up -d --force-recreate --wait --wait-timeout 120
+          python3 scripts/ci-smoke.py --verify-persistence
+          ./deploy
+      - name: Diagnostics
+        if: always()
+        run: docker compose ps && docker compose logs --no-color --tail=150
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-results
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+          if-no-files-found: ignore
+      - name: Cleanup CI containers
+        if: always()
+        run: docker compose down -v

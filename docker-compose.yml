@@ -1,0 +1,50 @@
+name: digital-life
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    init: true
+    restart: unless-stopped
+    environment:
+      DIGITAL_LIFE_DATA_DIR: /data
+      DIGITAL_LIFE_SECURE_COOKIE: ${DIGITAL_LIFE_SECURE_COOKIE:-false}
+      DIGITAL_LIFE_TRUSTED_ORIGINS: ${DIGITAL_LIFE_TRUSTED_ORIGINS:-}
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - ./data:/data
+      - ./backups:/backups
+    expose:
+      - '8000'
+    healthcheck:
+      test: ['CMD', 'python', '-c', "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 5s
+      timeout: 4s
+      retries: 20
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - '${DIGITAL_LIFE_WEB_PORT:-8090}:80'
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-T', '3', '-O', '/dev/null', 'http://127.0.0.1/health']
+      interval: 5s
+      timeout: 4s
+      retries: 20
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'

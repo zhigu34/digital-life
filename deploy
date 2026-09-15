@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+# NAS entry point: git pull --ff-only && ./deploy
+set -Eeuo pipefail
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$ROOT_DIR"
+CHECK_ONLY=0
+FULL=0
+for argument in "$@"; do
+  case "$argument" in
+    --check-only) CHECK_ONLY=1 ;;
+    --full) FULL=1 ;;
+    -h|--help) printf '%s\n' '用法: ./deploy [--check-only] [--full]' '预览计划不会修改配置、构建镜像或更新容器。'; exit 0 ;;
+    *) printf '未知参数: %s\n' "$argument" >&2; exit 2 ;;
+  esac
+done
+info() { printf '[INFO] %s\n' "$*"; }
+fail() { printf '[FAIL] %s\n' "$*" >&2; exit 1; }
+for program in docker git awk sort; do command -v "$program" >/dev/null || fail "缺少程序: $program"; done
+docker version >/dev/null 2>&1 || fail 'Docker 服务不可用'
+docker compose version >/dev/null 2>&1 || fail '需要 Docker Compose v2'
+case "$(docker info --format '{{.Architecture}}')" in
+  x86_64|amd64|aarch64|arm64) ;;
+  *) fail '不支持的 Docker 服务器架构' ;;
+esac
+[ "$(git rev-parse --show-toplevel)" = "$ROOT_DIR" ] || fail '请在独立的 Digital Life Git 仓库运行'
+[ -f .env.example ] || fail '缺少 .env.example'
+ENV_FILE=.env
+[ -f "$ENV_FILE" ] || ENV_FILE=.env.example
+COMPOSE=(docker compose --env-file "$ENV_FILE")
+"${COMPOSE[@]}" config -q || fail 'Compose 配置无效'
+
+hash_stream() {
+  if command -v sha256sum >/dev/null; then sha256sum | awk '{print $1}'
+  elif command -v shasum >/dev/null; then shasum -a 256 | awk '{print $1}'
+  else fail '需要 sha256sum 或 shasum'; fi
+}
+hash_sources() {
+  git ls-files --cached --others --exclude-standard -- "$@" | LC_ALL=C sort -u |
+    while IFS= read -r file; do
+      [ -f "$file" ] || continue
+      printf '%s\n' "$file"
+      hash_stream < "$file"
+    done | hash_stream
+}
+state_get() {
+  [ -f logs/deploy-state ] || return 0
+  awk -F= -v key="$1" '$1==key {sub(/^[^=]*=/, ""); print; exit}' logs/deploy-state
+}
+BACKEND_HASH=$(hash_sources backend .dockerignore)
+FRONTEND_HASH=$(hash_sources frontend .dockerignore)
+CONFIG_HASH=$({ hash_sources docker-compose.yml .env.example deploy scripts; hash_stream < "$ENV_FILE"; } | hash_stream)
+BACKEND=0
+FRONTEND=0
+if [ "$FULL" = 1 ] || [ "$CONFIG_HASH" != "$(state_get config)" ]; then BACKEND=1; FRONTEND=1; fi
+[ "$BACKEND_HASH" = "$(state_get backend)" ] || BACKEND=1
+[ "$FRONTEND_HASH" = "$(state_get frontend)" ] || FRONTEND=1
+SERVICES=()
+[ "$BACKEND" = 0 ] || SERVICES+=(backend)
+[ "$FRONTEND" = 0 ] || SERVICES+=(frontend)
+info "部署计划: ${SERVICES[*]:-源码未变，仅检查并恢复服务}"
+if [ "$CHECK_ONLY" = 1 ]; then info '检查结束；未修改文件或服务'; exit 0; fi
+
+umask 077
+mkdir -p logs
+LOCK_DIR=logs/deploy.lock
+mkdir "$LOCK_DIR" 2>/dev/null || fail '已有部署或备份/恢复操作；确认没有操作运行后才可移除 logs/deploy.lock'
+cleanup() {
+  local status=$?
+  rmdir "$LOCK_DIR" 2>/dev/null || true
+  if [ "$status" != 0 ]; then printf '[FAIL] 部署未完成，成功版本未更新。请查看 logs/deploy.log；如已执行迁移，恢复需使用匹配版本和备份。\n' >&2; fi
+}
+trap cleanup EXIT
+if [ ! -f .env ]; then cp .env.example .env; info '已创建 .env；管理员密码通过初始化命令设置'; fi
+chmod 600 .env
+COMPOSE=(docker compose --env-file .env)
+mkdir -p data backups
+# Hash final configuration, not the template filename.
+CONFIG_HASH=$({ hash_sources docker-compose.yml .env.example deploy scripts; hash_stream < .env; } | hash_stream)
+: > logs/deploy.log
+if [ "${#SERVICES[@]}" -gt 0 ]; then
+  info "构建: ${SERVICES[*]}（构建完成前保持现有服务）"
+  "${COMPOSE[@]}" build "${SERVICES[@]}" >> logs/deploy.log 2>&1 || { tail -n 60 logs/deploy.log >&2; fail '镜像构建失败'; }
+fi
+if [ "$BACKEND" = 1 ]; then
+  info '暂停后端写入，准备数据库迁移'
+  "${COMPOSE[@]}" stop backend >> logs/deploy.log 2>&1 || fail '无法停止后端'
+  if [ -f data/digital-life.db ]; then
+    BACKUP_FILE="/backups/pre-deploy-$(date -u +%Y%m%dT%H%M%SZ)-$$.db"
+    "${COMPOSE[@]}" run --rm --no-deps -T backend python -m app.cli backup --output "$BACKUP_FILE" >> logs/deploy.log 2>&1 || fail '备份失败，未执行迁移'
+    info "迁移前备份: $BACKUP_FILE"
+  fi
+  "${COMPOSE[@]}" run --rm --no-deps -T backend python -m app.cli migrate >> logs/deploy.log 2>&1 || fail '迁移失败，后端保持停止，请检查日志'
+fi
+# Compose reconciles both services but does not recreate unchanged healthy containers.
+# This also recovers an unchanged service that was stopped independently.
+"${COMPOSE[@]}" up -d --no-build >> logs/deploy.log 2>&1 || fail '服务启动或更新失败'
+
+ATTEMPTS=${DIGITAL_LIFE_HEALTH_ATTEMPTS:-60}
+case "$ATTEMPTS" in ''|*[!0-9]*) fail '健康检查次数必须为正整数';; esac
+[ "$ATTEMPTS" -gt 0 ] || fail '健康检查次数必须为正整数'
+for service in backend frontend; do
+  HEALTHY=0
+  for ((attempt=1; attempt<=ATTEMPTS; attempt++)); do
+    CONTAINER=$("${COMPOSE[@]}" ps -q "$service")
+    STATUS=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$CONTAINER" 2>/dev/null || true)
+    if [ "$STATUS" = healthy ]; then HEALTHY=1; break; fi
+    [ "$attempt" = "$ATTEMPTS" ] || sleep 2
+  done
+  [ "$HEALTHY" = 1 ] || fail "$service 未通过健康检查"
+done
+# Verify the actual Web reverse-proxy route, not only process liveness.
+"${COMPOSE[@]}" exec -T backend python -c "import urllib.request; urllib.request.urlopen('http://frontend/health', timeout=10)" >> logs/deploy.log 2>&1 || fail 'Web 入口到后端的健康检查失败'
+CURRENT_COMMIT=$(git rev-parse HEAD)
+{
+  printf 'commit=%s\n' "$CURRENT_COMMIT"
+  printf 'backend=%s\nfrontend=%s\nconfig=%s\n' "$BACKEND_HASH" "$FRONTEND_HASH" "$CONFIG_HASH"
+} > logs/deploy-state.tmp
+mv logs/deploy-state.tmp logs/deploy-state
+info "部署成功: ${CURRENT_COMMIT:0:12}"
+"${COMPOSE[@]}" ps
+info '首次使用: docker compose exec backend python -m app.cli create-admin --username admin'

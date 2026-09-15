@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+cd "$(dirname "$0")/.."
+if [ "$#" != 2 ] || [ "$1" != '--confirm' ]; then
+  echo '恢复将替换当前全部账号的数据，并先备份当前数据库。用法: ./scripts/restore --confirm backups/文件.db' >&2
+  exit 2
+fi
+source_file=$2
+case "$source_file" in backups/*.db) ;; *) echo '请选择本项目 backups/ 下的 .db 文件' >&2; exit 2;; esac
+filename=${source_file#backups/}
+case "$filename" in */*|*..*) echo '备份文件名无效' >&2; exit 2;; esac
+[ -f "$source_file" ] && [ ! -L "$source_file" ] || { echo '备份文件不存在或是符号链接' >&2; exit 2; }
+umask 077
+mkdir -p logs
+mkdir logs/deploy.lock 2>/dev/null || { echo '已有部署或备份/恢复操作' >&2; exit 1; }
+trap 'rmdir logs/deploy.lock' EXIT
+docker compose stop backend
+if [ -f data/digital-life.db ]; then
+  stamp="$(date -u +%Y%m%dT%H%M%SZ)-$$"
+  if ! docker compose run --rm --no-deps -T backend python -m app.cli backup --output "/backups/pre-restore-$stamp.db"; then
+    printf '%s\n' '当前数据库无法生成有效备份；先保全数据库及 WAL/SHM 原始文件，再恢复所选备份。' >&2
+    docker compose run --rm --no-deps -T backend python /app/scripts/preserve-database.py /data "/backups/damaged-current-$stamp"
+  fi
+fi
+docker compose run --rm --no-deps -T backend python -m app.cli restore --input "/backups/$filename"
+docker compose up -d backend
+printf '%s\n' '已恢复数据库并启动后端。请运行 ./deploy 验证完整服务健康状态。'

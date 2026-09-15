@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+cd "$(dirname "$0")/.."
+umask 077
+mkdir -p logs backups
+mkdir logs/deploy.lock 2>/dev/null || { echo '已有部署或备份/恢复操作' >&2; exit 1; }
+trap 'rmdir logs/deploy.lock' EXIT
+filename="manual-$(date -u +%Y%m%dT%H%M%SZ)-$$.db"
+# SQLite backup API takes a consistent snapshot while the server is running.
+docker compose exec -T backend python -m app.cli backup --output "/backups/$filename"
+printf '备份已保存: backups/%s\n' "$filename"
