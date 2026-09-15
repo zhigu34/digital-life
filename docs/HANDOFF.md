@@ -1,6 +1,6 @@
 # Digital Life 接手状态
 
-更新：2026-09-15。首版已在 `main`；周期维护功能已完成本地验证，当前位于 `codex/recurring-maintenance`，等待推送和 CI。
+更新：2026-09-15。首版及周期维护功能均已合入 GitHub `main`，本地验证和 GitHub CI 均通过。
 
 ## 用户确认的方向
 
@@ -31,16 +31,17 @@
 - 本地演示库先做 `before-maintenance.db` 备份，再由应用从 `0001` 升级到 `0002`；已有演示账号和记录保留。演示账号增加了一条“空气净化器滤芯”维护记录。
 - 当前本地机器没有 Docker；真实 Linux amd64 容器已在 GitHub CI 验证通过，包含首次部署、健康检查、API/导出、桌面/手机操作、容器重建后的持久化及重复部署。
 - 验证提交：`5d41173`；[GitHub Actions #34920606997](https://github.com/zhigu34/digital-life/actions/runs/34920606997) 的 backend、frontend、docker-e2e 均为 success。随后仅更新交付文档，未改应用代码。
+- 周期维护验证提交：`1e3c31b`；功能分支和 [main Actions #34981612840](https://github.com/zhigu34/digital-life/actions/runs/34981612840) 的 backend、frontend、docker-e2e 均为 success。随后仅更新交付文档，未改应用代码。
 
 ## 接下来
 
-1. 推送 `codex/recurring-maintenance`，检查 GitHub Actions 的 backend、frontend、docker-e2e；通过后快进 `main` 并再次确认 CI。
-2. 用户随后在 NAS 运行 `git pull --ff-only && ./deploy`。脚本会在 `0002` 迁移前备份旧库；尚未连接或操作用户的 NAS。
-3. 如通过域名访问，按 README 配置 HTTPS、Secure Cookie 和可信 Origin。
+1. 用户在 NAS 运行 `git pull --ff-only && ./deploy`。脚本会在 `0002` 迁移前备份旧库；尚未连接或操作用户的 NAS。
+2. 如通过域名访问，按 README 配置 HTTPS、Secure Cookie 和可信 Origin。
+3. 当前没有已知阻断周期维护功能使用的问题；后续功能继续从 `main` 创建新的 `codex/` 分支。
 
 ## 本地与 Git 状态提示
 
-主开发目录就是当前仓库，当前功能分支为 `codex/recurring-maintenance`，基于 `origin/main` 的 `ab93a38`。实际状态以 Git 为准。
+主开发目录就是当前仓库，当前分支为 `main` 并跟踪 `origin/main`；周期维护实现提交为 `1e3c31b`。实际状态以 Git 为准。
 SSH 已验证能访问 `zhigu34` 的 GitHub，远程地址使用 `git@github.com:zhigu34/digital-life.git`。没有安装 gh CLI，可使用现有 GitHub 连接器或公开 Actions API 读取状态。
 本地 `.local/preview-data` 仅为本次联调使用，含测试账号，不能复制到 NAS 生产数据目录或提交。
 不要依赖上一会话的进程 ID；重新检查端口是否已有服务。需要启动服务或联网时遵守当前环境权限。
