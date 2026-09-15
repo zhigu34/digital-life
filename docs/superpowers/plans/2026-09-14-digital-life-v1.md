@@ -56,9 +56,11 @@ Files: tests/e2e/, playwright.config or frontend e2e config, README.md, docs/.
 - [x] Start actual API and frontend locally with a temporary demo data directory and operator-created account.
 - [x] Exercise login, create/edit/complete/delete records, export, account switching; capture desktop/mobile screenshots and inspect layout.
 - [x] Request independent code review of account isolation, deployment and integrated behavior; fix material issues with regression tests.
-- [ ] Run all checks once after final fixes, commit and push initial project to user-provided empty repository; ensure main is deployable after CI verification.
-- [ ] Inspect GitHub Actions results; fix failures and re-run relevant checks. Report actual verification and any external blockers.
+- [x] Run all checks once after final fixes, commit and push initial project to user-provided empty repository; ensure main is deployable after CI verification.
+- [x] Inspect GitHub Actions results; fix failures and re-run relevant checks. Report actual verification and any external blockers.
 
 ## Execution record
 - Remote repository is empty. No existing application baseline tests.
 - Local Docker CLI is absent; build/start checks will run in GitHub Actions. Local API/browser checks and deployment-script behavior tests remain available.
+
+- 2026-09-15: Implementation committed as `5d41173` and pushed to `main`. Local checks: backend 55, frontend 12, deployment 9, desktop/mobile E2E 8 passed. All three CI jobs passed: https://github.com/zhigu34/digital-life/actions/runs/34920606997. NAS deployment remains an operator step; no NAS host was supplied.

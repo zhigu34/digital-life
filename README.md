@@ -68,7 +68,7 @@ DIGITAL_LIFE_TRUSTED_ORIGINS=https://life.example.com
 cd backend
 uv sync --frozen --dev
 uv run python -m app.cli create-admin --username admin
-uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000 --no-proxy-headers
 ```
 
 ```bash
@@ -136,3 +136,7 @@ GitHub Actions 在每次 push 和 PR 时执行：
 花销的“确认本期已付”推进下一扣费日，第一版不保存历史银行流水。番剧信息手动维护。日记照片、自动内容同步、外部提醒和离线编辑属于后续扩展。
 
 各账号的数据访问在服务端校验。管理员在界面中没有读取他人生活记录的特权，但具有 NAS 文件权限的部署者仍能读取底层数据库。
+
+## 其他开发会话接手
+
+先阅读 [AGENTS.md](AGENTS.md) 的工程约定与维护边界，再查看 [docs/HANDOFF.md](docs/HANDOFF.md) 的实际验证结果和剩余事项。接口约定见 [docs/contracts/api.md](docs/contracts/api.md)。
