@@ -47,6 +47,19 @@ export interface ShowFormDraft {
   air_status?: Show["air_status"] | "";
 }
 
+export interface ShowMetadataResult {
+  source: "bangumi" | "tmdb";
+  source_id: number;
+  title: string;
+  original_title: string | null;
+  air_date: string | null;
+  total_episodes: number | null;
+  platform: string | null;
+  image: string | null;
+  seasons: number | null;
+  air_status: "airing" | "ended" | "upcoming" | "released" | null;
+}
+
 export type NormalizeShowResult =
   | { data: Omit<Show, "id">; error: null }
   | { data: null; error: string };
@@ -86,4 +99,20 @@ export function normalizeShowPayload(
     return { data: null, error: "已看进度不能大于总集数" };
   }
   return { data, error: null };
+}
+
+export function applyShowMetadata(
+  draft: ShowFormDraft,
+  result: ShowMetadataResult,
+): ShowFormDraft {
+  return {
+    ...draft,
+    title: result.title,
+    total: result.total_episodes ?? draft.total,
+    source: result.source,
+    source_id: result.source_id,
+    poster_path: result.image ?? "",
+    seasons: result.seasons ?? "",
+    air_status: result.air_status ?? "",
+  };
 }
