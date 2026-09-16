@@ -1,6 +1,6 @@
 # Digital Life 接手状态
 
-更新：2026-09-16。首版及周期维护功能均已合入 GitHub `main` 并由用户确认在 NAS 首次部署成功。同日五个新功能迭代（统一日历、统计图表、JSON 导入、文字随记、动漫元数据搜索）已合入 `main`（快进到 `438ec5b`），main Actions `35055951580` 的 backend、frontend、docker-e2e 全部通过；NAS 待用户部署。
+更新：2026-09-16。首版及周期维护功能均已合入 GitHub `main` 并由用户确认在 NAS 首次部署成功。同日五个新功能迭代（统一日历、统计图表、JSON 导入、文字随记、影视元数据搜索）已合入 `main`（快进到 `cd797fb`）；其中元数据搜索随后扩展到剧集与电影（Bangumi type 6，`cd797fb`），main Actions `35058143799` 的 backend、frontend、docker-e2e 全部通过；NAS 待用户部署。
 
 ## 用户确认的方向
 
@@ -38,7 +38,7 @@
 ## 接下来
 
 1. NAS 首次部署已于 2026-09-16 由用户确认成功（用户反馈；本会话未远程连接 NAS 复核）。
-2. 用户在 NAS 执行 `git pull --ff-only && ./deploy`（0003 迁移前 deploy 会自动备份旧库）。本次包含 Alembic `0003` 与新增 `DIGITAL_LIFE_DISABLE_METADATA` 配置项（默认关闭，无需改动 `.env`）。
+2. 用户在 NAS 执行 `git pull --ff-only && ./deploy`（0003 迁移前 deploy 会自动备份旧库）。本次包含 Alembic `0003` 与新增 `DIGITAL_LIFE_DISABLE_METADATA` 配置项（默认关闭，无需改动 `.env`）；追剧元数据搜索已覆盖动漫、剧集、电影三种类型。
 3. 如后续通过域名公网访问，按 README 配置 HTTPS、Secure Cookie 和可信 Origin；建议先补登录失败限速和 NAS 侧自动定期备份（2026-09-16 评审提出，尚未实施，仅内网使用时可放缓）。
 4. 当前没有已知阻断功能使用的问题；后续功能继续从 `main` 创建新的 `codex/` 分支。用户已授权固定交付流程：分支 CI 全绿后直接合入 `main` 推送，NAS 部署由用户执行（见 AGENTS.md 协作与交付）。
 
