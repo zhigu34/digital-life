@@ -2,16 +2,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { api, ApiError, setCsrf } from "./api";
 import { calendarDate } from "./domain";
-import type {
-  User,
-  Records,
-  Collection,
-  Page,
-  RecordItem,
-  Maintenance,
-  Project,
-  Stats,
-} from "./types";
+import type { User, Records, Collection, Page, RecordItem, Maintenance, Project, Stats } from "./types";
 import AppIcon from "./components/AppIcon.vue";
 import RecordForm from "./components/RecordForm.vue";
 import ShowForm from "./components/ShowForm.vue";
@@ -26,13 +17,7 @@ import MaintenanceView from "./views/MaintenanceView.vue";
 import NotesView from "./views/NotesView.vue";
 import CheckInsView from "./views/CheckInsView.vue";
 import ProjectsView from "./views/ProjectsView.vue";
-const user = ref<User | null>(null),
-  initializing = ref(true),
-  loading = ref(false),
-  busy = ref(false),
-  error = ref(""),
-  loginError = ref(""),
-  notice = ref("");
+const user = ref<User | null>(null), initializing = ref(true), loading = ref(false), busy = ref(false), error = ref(""), loginError = ref(""), notice = ref("");
 const records = reactive<Records>({ tasks: [], expenses: [], shows: [], milestones: [], maintenance: [], notes: [], checkins: [], projects: [] });
 const stats = ref<Stats | null>(null);
 const page = ref<Page>("today"), moreOpen = ref(false), editing = ref<{ collection: Collection; item?: RecordItem } | null>(null), formError = ref("");
@@ -48,16 +33,16 @@ function clear(){ accountVersion++; user.value=null; setCsrf(""); Object.assign(
 function notify(message:string){ notice.value=message; clearTimeout(noticeTimer); noticeTimer=setTimeout(()=>notice.value="",4200); }
 function handleError(e:unknown){ if(e instanceof ApiError&&e.status===401){clear();loginError.value="登录已过期，请重新登录";return;} error.value=e instanceof Error?e.message:"连接失败，请检查网络后重试"; }
 async function load(){ const version=accountVersion;loading.value=true;error.value="";try{const [tasks,expenses,shows,milestones,maintenance,notes,checkins,projects,statsData]=await Promise.all([api<Records["tasks"]>("/tasks"),api<Records["expenses"]>("/expenses"),api<Records["shows"]>("/shows"),api<Records["milestones"]>("/milestones"),api<Records["maintenance"]>("/maintenance"),api<Records["notes"]>("/notes"),api<Records["checkins"]>("/checkins"),api<Records["projects"]>("/projects"),api<Stats>(`/stats?end_month=${today.value.slice(0,7)}`)]);if(version===accountVersion){Object.assign(records,{tasks,expenses,shows,milestones,maintenance,notes,checkins,projects});stats.value=statsData;}}catch(e){if(version===accountVersion)handleError(e);}finally{if(version===accountVersion)loading.value=false;}}
-async function login(username:string,password:string){busy.value=true;loginError.value="";try{const session=await api<{user:User;csrf_token:string}>("/auth/login","POST",{username,password});user.value=session.user;setCsrf(session.csrf_token);await load();}catch(e){loginError.value=e instanceof Error?e.message:"登录失败";}finally{busy.value=false;}}
-async function logout(){busy.value=true;try{await api("/auth/logout","POST");}catch{}finally{clear();busy.value=false;}}
-function navigate(next:Page){page.value=next;moreOpen.value=false;}
+async function login(username:string,password:string){busy.value=true;loginError.value="";try{clear();const session=await api<{user:User;csrf_token:string}>("/auth/login","POST",{username,password});user.value=session.user;setCsrf(session.csrf_token);await load();}catch(e){loginError.value=e instanceof Error?e.message:"登录失败，请重试";}finally{busy.value=false;}}
+async function logout(){busy.value=true;try{await api("/auth/logout","POST");clear();}catch(e){handleError(e);}finally{busy.value=false;}}
+function navigate(next:Page){moreOpen.value=false;page.value=next;editing.value=null;window.scrollTo({top:0,behavior:"smooth"});}
 function open(collection:Collection,item?:RecordItem){formError.value="";editing.value={collection,item};}
-async function save(data:Record<string,unknown>){if(!editing.value)return;busy.value=true;formError.value="";const {collection,item}=editing.value;try{await api(`/${collection}${item?`/${item.id}`:""}`,item?"PATCH":"POST",data);editing.value=null;await load();notify(item?"记录已保存":"记录已添加");}catch(e){formError.value=e instanceof Error?e.message:"保存失败";}finally{busy.value=false;}}
-async function remove(collection:Collection,item:RecordItem){if(!window.confirm("确认删除这条记录？删除后无法恢复。"))return;busy.value=true;try{await api(`/${collection}/${item.id}`,"DELETE");editing.value=null;await load();notify("记录已删除");}catch(e){handleError(e);}finally{busy.value=false;}}
-async function removeMaintenance(item:Maintenance){if(!window.confirm("确认删除这条周期维护？相关完成记录也会一并删除。"))return;busy.value=true;try{await api(`/maintenance/${item.id}`,"DELETE");await load();notify("周期维护已删除");}catch(e){handleError(e);}finally{busy.value=false;}}
-async function saveProject(data:Partial<Project>){busy.value=true;try{await api(`/projects${data.id?`/${data.id}`:""}`,data.id?"PATCH":"POST",data);await load();notify(data.id?"项目已保存":"项目已添加");}catch(e){handleError(e);}finally{busy.value=false;}}
-async function removeProject(item:Project){if(!window.confirm("确认删除这个项目？"))return;busy.value=true;try{await api(`/projects/${item.id}`,"DELETE");await load();notify("项目已删除");}catch(e){handleError(e);}finally{busy.value=false;}}
-async function mutate(path:string,method:string,data?:unknown,message="操作已完成"){busy.value=true;try{await api(path,method,data);await load();notify(message);}catch(e){handleError(e);}finally{busy.value=false;}}
+async function save(data:Record<string,unknown>){if(!editing.value)return;busy.value=true;formError.value="";const {collection,item}=editing.value;try{await api(`/${collection}${item?`/${item.id}`:""}`,item?"PATCH":"POST",data);editing.value=null;await load();notify(item?"记录已更新":"已添入你的日常");}catch(e){if(e instanceof ApiError&&e.status===401)handleError(e);else formError.value=e instanceof Error?e.message:"保存失败";}finally{busy.value=false;}}
+async function remove(collection:Collection,item:RecordItem){if(!window.confirm(`确定删除“${item.title}”？删除后无法恢复。`))return;editing.value=null;await mutate(`/${collection}/${item.id}`,"DELETE",undefined,"记录已删除");}
+async function mutate(path:string,method:string,data?:unknown,message="已更新"){busy.value=true;error.value="";try{await api(path,method,data);await load();notify(message);}catch(e){handleError(e);}finally{busy.value=false;}}
+async function removeMaintenance(item:Maintenance){if(!window.confirm(`确定删除“${item.title}”及其全部完成历史？删除后无法恢复。`))return;await mutate(`/maintenance/${item.id}`,"DELETE",undefined,"维护事项及历史已删除");}
+async function saveProject(data:Record<string,unknown>,id?:number){busy.value=true;formError.value="";try{await api(`/projects${id?`/${id}`:""}`,id?"PATCH":"POST",data);await load();notify(id?"在做已更新":"已加入在做");}catch(e){handleError(e);}finally{busy.value=false;}}
+async function removeProject(item:Project){if(!window.confirm(`确定删除“${item.title}”？删除后无法恢复。`))return;busy.value=true;try{await api(`/projects/${item.id}`,"DELETE");await load();notify("在做已删除");}catch(e){handleError(e);}finally{busy.value=false;}}
 function action(collection:Collection,id:number,kind:string,data?:unknown){if(kind==="pay"&&!window.confirm("确认本期已经支付？下次应付日期将向后推进一个周期。"))return;return mutate(`/${collection}/${id}${kind==="status"?"":`/${kind}`}`,kind==="status"?"PATCH":"POST",data,kind==="pay"?"本期已付，下次日期已更新":kind==="advance"?"又看完一集，进度已更新":"状态已更新");}
 async function profile(data:unknown){busy.value=true;try{user.value=await api<User>("/auth/profile","PATCH",data);notify("个人资料已保存");}catch(e){handleError(e);}finally{busy.value=false;}}
 async function password(data:unknown){busy.value=true;try{await api("/auth/password","POST",data);clear();loginError.value="密码已更新，请使用新密码登录";}catch(e){handleError(e);}finally{busy.value=false;}}
@@ -85,10 +70,11 @@ onUnmounted(()=>{media.removeEventListener("change",theme);clearInterval(clockTi
       <ProfileView v-else-if="page==='profile'" :user="user" :busy="busy" @profile="profile" @password="password" @export="exportData" @import="importData" @logout="logout" />
       <AdminView v-else-if="page==='admin'&&user.is_admin" :user="user" @error="handleError" @notice="notify" />
     </main>
-    <nav class="mobile-nav" aria-label="移动端导航"><button v-for="id in mobilePrimary" :key="id" :class="{active:page===id}" @click="navigate(id)"><AppIcon :name="id" /><span>{{mobileNavLabels[id]}}</span></button><button :class="{active:secondaryPages.includes(page)}" @click="moreOpen=!moreOpen"><AppIcon name="more" /><span>更多</span></button></nav>
-    <div v-if="moreOpen" class="more-sheet" @click.self="moreOpen=false"><div><span class="sheet-handle"></span><p>更多生活记录</p><button v-for="id in secondaryPages" :key="id" @click="navigate(id)"><AppIcon :name="id" /><span>{{mobileNavLabels[id]}}</span><AppIcon name="chevron" :size="14" /></button></div></div>
+    <nav class="mobile-nav" aria-label="移动端导航"><button v-for="id in mobilePrimary" :key="id" :aria-label="id === 'today' ? '今日总览' : pageLabels[id]" :class="{active:page===id}" @click="navigate(id)"><AppIcon :name="id" :size="21" /><span>{{mobileNavLabels[id]}}</span></button><button :class="{active:moreOpen||secondaryPages.includes(page)}" :aria-expanded="moreOpen" aria-label="更多页面" @click="moreOpen=!moreOpen"><AppIcon name="menu" :size="21" /><span>更多</span></button></nav>
+    <div v-if="moreOpen" class="mobile-more-backdrop" aria-label="关闭更多菜单" @click="moreOpen=false"></div>
+    <nav v-if="moreOpen" class="mobile-more-sheet" aria-label="更多页面"><button v-for="id in secondaryPages" :key="id" :class="{active:page===id}" @click="navigate(id)"><AppIcon :name="id" :size="19" /><span>{{pageLabels[id]}}</span></button><button v-if="user.is_admin" :class="{active:page==='admin'}" @click="navigate('admin')"><AppIcon name="admin" :size="19" /><span>账户管理</span></button><button :class="{active:page==='profile'}" @click="navigate('profile')"><AppIcon name="profile" :size="19" /><span>个人设置</span></button></nav>
     <ShowForm v-if="editing?.collection==='shows'" :key="`shows-${editing.item?.id ?? 'new'}`" :item="editing.item as Records['shows'][number] | undefined" :busy="busy" :error="formError" @close="editing=null" @save="save" @remove="(item)=>remove('shows',item)" />
     <RecordForm v-else-if="editing" :key="`${editing.collection}-${editing.item?.id ?? 'new'}`" :collection="editing.collection" :item="editing.item" :today="today" :busy="busy" :error="formError" @close="editing=null" @save="save" @remove="(item)=>remove(editing!.collection,item)" />
-    <transition name="toast"><div v-if="notice" class="toast" role="status"><AppIcon name="check" :size="16" />{{notice}}</div></transition>
+    <Transition name="toast"><div v-if="notice" class="toast" role="status"><AppIcon name="check" :size="18" />{{notice}}</div></Transition>
   </div>
 </template>
