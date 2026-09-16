@@ -40,3 +40,26 @@ export async function api<T = void>(
   }
   return response.status === 204 ? (undefined as T) : response.json();
 }
+
+export async function uploadPoster(path: string, file: File): Promise<void> {
+  const form = new FormData();
+  form.append("file", file);
+  const headers: Record<string, string> = {};
+  if (csrf) headers["X-CSRF-Token"] = csrf;
+  const response = await fetch(`/api${path}`, {
+    method: "PUT",
+    credentials: "same-origin",
+    headers,
+    cache: "no-store",
+    body: form,
+  });
+  if (!response.ok) {
+    const body = await response
+      .json()
+      .catch(() => ({ detail: "上传失败，请重试" }));
+    throw new ApiError(
+      typeof body.detail === "string" ? body.detail : "上传失败",
+      response.status,
+    );
+  }
+}

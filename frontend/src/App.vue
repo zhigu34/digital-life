@@ -242,6 +242,7 @@ async function save(data: Record<string, unknown>) {
 }
 async function remove(collection: Collection, item: RecordItem) {
   if (!window.confirm(`确定删除“${item.title}”？删除后无法恢复。`)) return;
+  editing.value = null;
   await mutate(`/${collection}/${item.id}`, "DELETE", undefined, "记录已删除");
 }
 async function mutate(
@@ -657,6 +658,7 @@ onUnmounted(() => {
       :error="formError"
       @close="editing = null"
       @save="save"
+      @remove="(item) => remove(editing!.collection, item)"
     /><Transition name="toast"
       ><div v-if="notice" class="toast" role="status">
         <AppIcon name="check" :size="18" />{{ notice }}

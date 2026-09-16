@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from "vue";
 import type { Collection, RecordItem } from "../types";
-import { api } from "../api";
+import { api, uploadPoster } from "../api";
 import AppIcon from "./AppIcon.vue";
 import ModalDialog from "./ModalDialog.vue";
 const props = defineProps<{
@@ -14,6 +14,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: [];
   save: [data: Record<string, unknown>];
+  remove: [item: RecordItem];
 }>();
 const titles = {
   tasks: "待办",
@@ -63,6 +64,14 @@ const amount = ref(
     : "",
 );
 const localError = ref("");
+const posterBusy = ref(false);
+const posterError = ref("");
+const posterInput = ref<HTMLInputElement>();
+const canEditCover = computed(() => props.collection === "shows" && !!props.item);
+const posterPreview = ref(
+  !!(props.item && "poster_path" in props.item && props.item.poster_path),
+);
+const LOCAL_POSTER = "local:upload";
 interface MetadataResult {
   source: "bangumi" | "tmdb";
   source_id: number;
@@ -135,6 +144,36 @@ function applyMetadata(result: MetadataResult) {
   form.seasons = result.seasons ?? "";
   form.air_status = result.air_status ?? "";
   metadataResults.value = [];
+}
+function posterSrc(item: RecordItem | undefined) {
+  return item && "poster_path" in item && item.poster_path
+    ? `/api/shows/${item.id}/poster`
+    : "";
+}
+async function pickPoster() {
+  posterInput.value?.click();
+}
+async function uploadPosterFile(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file || !props.item) return;
+  posterError.value = "";
+  posterBusy.value = true;
+  try {
+    await uploadPoster(`/shows/${props.item.id}/poster`, file);
+    posterPreview.value = true;
+    form.poster_path = LOCAL_POSTER;
+  } catch (e) {
+    posterError.value = e instanceof Error ? e.message : "上传失败";
+  } finally {
+    posterBusy.value = false;
+  }
+}
+function clearPoster() {
+  form.poster_path = "";
+  posterPreview.value = false;
+  posterError.value = "";
 }
 function save() {
   localError.value = "";
@@ -376,6 +415,53 @@ function save() {
               </button>
             </li>
           </ul>
+        </div>
+        <div v-if="canEditCover" class="poster-editor">
+          <span class="field-label">封面</span>
+          <div class="poster-editor-body">
+            <div class="poster-thumb">
+              <img
+                v-if="posterPreview"
+                :src="posterSrc(props.item)"
+                :alt="form.title"
+                @error="(event) => ((event.target as HTMLImageElement).style.display = 'none')"
+              /><AppIcon v-else name="shows" :size="26" />
+            </div>
+            <div class="poster-editor-actions">
+              <input
+                ref="posterInput"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                hidden
+                @change="uploadPosterFile"
+              />
+              <button
+                type="button"
+                class="text-button"
+                :disabled="posterBusy"
+                @click="pickPoster"
+              >
+                <AppIcon :name="posterBusy ? 'loading' : 'plus'" :size="14" />{{
+                  posterBusy ? "上传中…" : "上传本地图片"
+                }}
+              </button>
+              <button
+                v-if="posterPreview"
+                type="button"
+                class="text-button"
+                @click="clearPoster"
+              >
+                <AppIcon name="close" :size="14" />清除封面
+              </button>
+            </div>
+          </div>
+          <p v-if="posterError" class="field-hint" role="alert">
+            {{ posterError }}
+          </p>
+          <p class="field-hint">
+            上传或重新刮削会覆盖当前封面；链接封面需为 image.tmdb.org 或
+            lain.bgm.tv 图片地址。
+          </p>
         </div></template
       ><template v-if="collection === 'milestones'"
         ><label>日期<input v-model="form.date" type="date" required /></label
@@ -401,6 +487,15 @@ function save() {
         {{ localError || error }}
       </p>
       <footer class="modal-actions">
+        <button
+          v-if="item"
+          type="button"
+          class="button danger-ghost"
+          :disabled="busy"
+          @click="emit('remove', item)"
+        >
+          <AppIcon name="delete" :size="15" />删除
+        </button>
         <button
           type="button"
           class="button secondary"

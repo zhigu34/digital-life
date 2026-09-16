@@ -328,7 +328,13 @@ const dueLabel = (date: string) => {
               确认本期已付<AppIcon name="chevron" :size="14" />
             </button></div></template
         ><template v-if="collection === 'shows' && 'progress' in item"
-          ><div class="show-cover" :class="item.media_type">
+          ><button
+            type="button"
+            class="show-cover"
+            :class="item.media_type"
+            :aria-label="`编辑 ${item.title}`"
+            @click="emit('edit', item)"
+          >
             <img
               v-if="item.poster_path"
               :src="`/api/shows/${item.id}/poster`"
@@ -339,7 +345,7 @@ const dueLabel = (date: string) => {
               class="show-score"
               >★ {{ item.score }}</span
             >
-          </div>
+          </button>
           <div class="record-body">
             <div class="record-meta">
               <span :class="['tag', item.status]">{{
@@ -406,7 +412,7 @@ const dueLabel = (date: string) => {
             <p v-if="item.notes" class="record-notes">{{ item.notes }}</p>
           </div></template
         >
-        <div class="record-actions">
+        <div v-if="collection !== 'shows'" class="record-actions">
           <button
             class="icon-button"
             :aria-label="`编辑 ${item.title}`"

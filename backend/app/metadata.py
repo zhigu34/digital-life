@@ -11,14 +11,14 @@ import logging
 from urllib.parse import urlparse
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
 from sqlalchemy.orm import Session
 
 from app.auth import Identity, authenticated
 from app.database import get_db
 from app.models import Show
 from app.records import owned
-from app.schemas import ResourceId
+from app.schemas import ResourceId, ShowView
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/shows", tags=["metadata"])
@@ -45,6 +45,9 @@ TMDB_MOVIE_STATUS = {"Released": "released"}
 # outbound access; only these image hosts may be fetched.
 POSTER_HOSTS = {"image.tmdb.org", "lain.bgm.tv"}
 MAX_POSTER_BYTES = 5_000_000
+# Sentinel stored in Show.poster_path when the cover was uploaded directly,
+# rather than scraped from Bangumi or TMDB.
+LOCAL_POSTER = "local:upload"
 
 
 def _reason(error: Exception) -> str:
@@ -226,7 +229,9 @@ def sniff_image(content: bytes) -> str:
         return "image/png"
     if content.startswith(b"RIFF") and content[8:12] == b"WEBP":
         return "image/webp"
-    return "image/jpeg"
+    if content.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    return ""
 
 
 @router.get("/{item_id}/poster")
@@ -239,28 +244,72 @@ def show_poster(
     show = owned(db, Show, item_id, identity.user.id)
     if not show.poster_path:
         raise HTTPException(404, "该记录没有封面")
-    host = urlparse(show.poster_path).hostname or ""
-    if host not in POSTER_HOSTS:
-        raise HTTPException(400, "封面来源不受支持")
     settings = request.app.state.settings
     cache_dir = settings.data_dir / "posters"
     cached = cache_dir / f"{show.id}.img"
-    if not cached.is_file():
-        try:
-            content, content_type = fetch_image(show.poster_path)
-        except ValueError as error:
-            logger.warning("Poster rejected: %s", error)
-            raise HTTPException(502, f"封面文件无效：{error}") from None
-        except Exception as error:
-            logger.exception("Poster download failed for show %s", show.id)
-            raise HTTPException(502, f"暂时无法获取封面：{_reason(error)}") from error
-        cache_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-        staged = cache_dir / f".{show.id}.tmp"
-        staged.write_bytes(content)
-        staged.replace(cached)
+    if show.poster_path == LOCAL_POSTER:
+        # User-uploaded poster: the file must already be on disk; it is never
+        # re-fetched, so a missing cache file means the upload did not land.
+        if not cached.is_file():
+            raise HTTPException(404, "封面文件缺失，请重新上传")
+    else:
+        host = urlparse(show.poster_path).hostname or ""
+        if host not in POSTER_HOSTS:
+            raise HTTPException(400, "封面来源不受支持")
+        if not cached.is_file():
+            try:
+                content, content_type = fetch_image(show.poster_path)
+            except ValueError as error:
+                logger.warning("Poster rejected: %s", error)
+                raise HTTPException(502, f"封面文件无效：{error}") from None
+            except Exception as error:
+                logger.exception("Poster download failed for show %s", show.id)
+                raise HTTPException(502, f"暂时无法获取封面：{_reason(error)}") from error
+            cache_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+            staged = cache_dir / f".{show.id}.tmp"
+            staged.write_bytes(content)
+            staged.replace(cached)
     content = cached.read_bytes()
     return Response(
         content,
         media_type=sniff_image(content),
         headers={"Cache-Control": "private, max-age=604800"},
     )
+
+
+@router.put("/{item_id}/poster", response_model=ShowView)
+async def upload_poster(
+    item_id: ResourceId,
+    request: Request,
+    file: UploadFile = File(...),
+    identity: Identity = Depends(authenticated),
+    db: Session = Depends(get_db),
+):
+    """Replace a show's cover with a user-uploaded image.
+
+    The poster is stored on disk next to the proxied poster cache and the
+    record keeps a sentinel value so the download path is skipped on read.
+    """
+    show = owned(db, Show, item_id, identity.user.id)
+    content = await file.read()
+    if not content:
+        raise HTTPException(400, "上传的文件为空")
+    if len(content) > MAX_POSTER_BYTES:
+        raise HTTPException(413, f"封面不能超过 {MAX_POSTER_BYTES // 1_000_000} MB")
+    content_type = (file.content_type or "").split(";")[0].strip().lower()
+    if content_type not in {"image/jpeg", "image/png", "image/webp"}:
+        # Fall back to sniffing the magic bytes: browsers sometimes label
+        # uploads loosely, and the real format is what gets served.
+        content_type = sniff_image(content)
+        if not content_type:
+            raise HTTPException(415, "仅支持 JPEG / PNG / WebP 图片")
+    settings = request.app.state.settings
+    cache_dir = settings.data_dir / "posters"
+    cache_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    staged = cache_dir / f".{show.id}.tmp"
+    staged.write_bytes(content)
+    staged.replace(cache_dir / f"{show.id}.img")
+    show.poster_path = LOCAL_POSTER
+    db.commit()
+    db.refresh(show)
+    return show

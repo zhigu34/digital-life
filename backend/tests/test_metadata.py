@@ -198,7 +198,18 @@ def test_metadata_bangumi_serves_every_media_type(workspace, monkeypatch):
         assert calls["subject_types"] == subject_types
 
 
-def stub_image(monkeypatch, content=b"poster-bytes", content_type="image/jpeg", fail=None):
+JPEG_1x1 = (
+    b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00"
+    + b"\xff\xdb\x00C\x00"
+    + bytes(range(1, 48))
+    + b"\x01" * 47
+    + b"\xff\xd9"
+)
+
+
+def stub_image(monkeypatch, content=None, content_type="image/jpeg", fail=None):
+    if content is None:
+        content = JPEG_1x1
     calls = {"count": 0}
 
     def fake(url):
@@ -233,7 +244,7 @@ def test_show_poster_is_fetched_cached_and_session_scoped(workspace, monkeypatch
     show_id = created.json()["id"]
     first = client.get(f"/api/shows/{show_id}/poster", headers=headers)
     assert first.status_code == 200
-    assert first.content == b"poster-bytes"
+    assert first.content == JPEG_1x1
     assert first.headers["content-type"] == "image/jpeg"
     assert first.headers["cache-control"] == "private, max-age=604800"
     assert calls["count"] == 1
@@ -263,6 +274,80 @@ def test_show_poster_rejects_missing_and_untrusted_sources(workspace, monkeypatc
     ).json()
     degraded = client.get(f"/api/shows/{unreachable['id']}/poster", headers=headers)
     assert degraded.status_code == 502
+
+
+PNG_1x1 = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+    b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01"
+    b"\x00\x00\x05\x00\x01\x0d\x0a-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+
+
+def _make_show(client, headers, title="测试剧"):
+    created = client.post("/api/shows", json={"title": title}, headers=headers)
+    assert created.status_code == 201, created.text
+    return created.json()
+
+
+def test_upload_poster_stores_file_and_marks_local(workspace):
+    client, headers, app = workspace
+    show = _make_show(client, headers)
+    response = client.put(
+        f"/api/shows/{show['id']}/poster",
+        files={"file": ("cover.png", PNG_1x1, "image/png")},
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["poster_path"] == "local:upload"
+    cached = app.state.settings.data_dir / "posters" / f"{show['id']}.img"
+    assert cached.is_file()
+    assert cached.read_bytes() == PNG_1x1
+
+    served = client.get(f"/api/shows/{show['id']}/poster", headers=headers)
+    assert served.status_code == 200
+    assert served.content == PNG_1x1
+    assert served.headers["content-type"] == "image/png"
+
+
+def test_upload_poster_rejects_wrong_type_and_empty(workspace):
+    client, headers, _ = workspace
+    show = _make_show(client, headers)
+    text = client.put(
+        f"/api/shows/{show['id']}/poster",
+        files={"file": ("note.txt", b"not an image", "text/plain")},
+        headers=headers,
+    )
+    assert text.status_code == 415
+    empty = client.put(
+        f"/api/shows/{show['id']}/poster",
+        files={"file": ("empty.png", b"", "image/png")},
+        headers=headers,
+    )
+    assert empty.status_code == 400
+
+
+def test_upload_poster_is_session_scoped(workspace):
+    client, headers, _ = workspace
+    show = _make_show(client, headers)
+    foreign = client.put(
+        f"/api/shows/{show['id']}/poster",
+        files={"file": ("cover.png", PNG_1x1, "image/png")},
+    )
+    assert foreign.status_code in {401, 403}
+
+
+def test_uploaded_poster_survives_cache_miss(workspace):
+    client, headers, app = workspace
+    show = _make_show(client, headers)
+    client.put(
+        f"/api/shows/{show['id']}/poster",
+        files={"file": ("cover.png", PNG_1x1, "image/png")},
+        headers=headers,
+    )
+    cached = app.state.settings.data_dir / "posters" / f"{show['id']}.img"
+    cached.unlink()
+    missing = client.get(f"/api/shows/{show['id']}/poster", headers=headers)
+    assert missing.status_code == 404
 
 
 def test_send_resilient_retries_any_connect_error_over_ipv4(monkeypatch):
