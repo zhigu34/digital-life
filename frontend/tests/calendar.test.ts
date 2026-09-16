@@ -14,6 +14,7 @@ const emptyRecords = (): Records => ({
   milestones: [],
   maintenance: [],
   notes: [],
+  checkins: [],
 });
 
 describe("calendar month grid", () => {

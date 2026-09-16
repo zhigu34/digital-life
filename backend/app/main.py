@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select, text
 from sqlalchemy.exc import SQLAlchemyError
 
-from app import admin, auth, imports, maintenance, metadata, records, stats
+from app import admin, auth, checkins, imports, maintenance, metadata, records, stats
 from app.config import Settings
 from app.database import make_engine, migrate, session_factory
 from app.models import Base
@@ -71,6 +71,7 @@ def create_app(data_dir=None):
     app.include_router(records.router)
     app.include_router(maintenance.router)
     app.include_router(stats.router)
+    app.include_router(checkins.router)
     app.include_router(imports.router)
     return app
 

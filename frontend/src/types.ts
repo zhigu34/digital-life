@@ -68,6 +68,23 @@ export interface Note {
   entry_date: string;
   created_at: string;
 }
+export interface CheckInItem {
+  id: number;
+  title: string;
+  notes: string;
+  kind: "daily" | "ongoing";
+  active: boolean;
+  created_at: string;
+  days: string[];
+  total_count: number;
+}
+export interface CheckInLogEntry {
+  id: number;
+  checkin_id: number;
+  checked_on: string;
+  note: string;
+  created_at: string;
+}
 export interface MaintenanceLog {
   id: number;
   maintenance_id: number;
@@ -102,6 +119,7 @@ export interface Records {
   milestones: Milestone[];
   maintenance: Maintenance[];
   notes: Note[];
+  checkins: CheckInItem[];
 }
 export type Page =
   | "today"
@@ -109,5 +127,6 @@ export type Page =
   | Collection
   | "maintenance"
   | "notes"
+  | "checkins"
   | "profile"
   | "admin";

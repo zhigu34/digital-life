@@ -1,9 +1,10 @@
 """Replace an account's life data from a personal JSON export."""
 
 from datetime import UTC, datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
@@ -11,11 +12,23 @@ from app.auth import Identity, authenticated
 from app.database import get_db
 from app.maintenance import calculated_due
 from app.maintenance_schemas import MaintenanceCreate, MaintenanceLogView
-from app.models import Expense, Maintenance, MaintenanceLog, Milestone, Note, Show, Task
+from app.models import (
+    CheckIn,
+    CheckInLog,
+    Expense,
+    Maintenance,
+    MaintenanceLog,
+    Milestone,
+    Note,
+    Show,
+    Task,
+)
 from app.schemas import (
     ExpensePayload,
+    ISODate,
     MilestonePayload,
     NotePayload,
+    Notes,
     ShowPayload,
     TaskPayload,
 )
@@ -60,6 +73,23 @@ class MaintenanceLogRow(MaintenanceLogView):
     model_config = IGNORE_EXTRA
 
 
+class CheckInRow(BaseModel):
+    model_config = IGNORE_EXTRA
+    title: str = Field(min_length=1, max_length=120)
+    notes: Notes = ""
+    kind: Literal["daily", "ongoing"]
+    active: bool = True
+    created_at: datetime | None = None
+
+
+class CheckInLogRow(BaseModel):
+    model_config = IGNORE_EXTRA
+    checkin_id: int
+    checked_on: ISODate
+    note: Notes = ""
+    created_at: datetime | None = None
+
+
 COLLECTION_ROWS = {
     "tasks": TaskRow,
     "expenses": ExpenseRow,
@@ -92,15 +122,15 @@ def parse_rows(payload, key, row_model):
     return rows
 
 
-def read_export_ids(payload):
+def read_export_ids(payload, key):
     raw_ids = []
-    for index, item in enumerate(payload.get("maintenance", []), 1):
+    for index, item in enumerate(payload.get(key, []), 1):
         item_id = item.get("id") if isinstance(item, dict) else None
         if not isinstance(item_id, int):
-            raise HTTPException(422, f"maintenance 第 {index} 条缺少 id")
+            raise HTTPException(422, f"{key} 第 {index} 条缺少 id")
         raw_ids.append(item_id)
     if len(set(raw_ids)) != len(raw_ids):
-        raise HTTPException(422, "maintenance 存在重复 id")
+        raise HTTPException(422, f"{key} 存在重复 id")
     return raw_ids
 
 
@@ -117,12 +147,25 @@ def import_data(
     }
     maintenance_rows = parse_rows(payload, "maintenance", MaintenanceRow)
     log_rows = parse_rows(payload, "maintenance_logs", MaintenanceLogRow)
-    total = sum(len(rows) for rows in collections.values()) + len(maintenance_rows) + len(log_rows)
+    checkin_rows = parse_rows(payload, "checkins", CheckInRow)
+    checkin_log_rows = parse_rows(payload, "checkin_logs", CheckInLogRow)
+    total = (
+        sum(len(rows) for rows in collections.values())
+        + len(maintenance_rows)
+        + len(log_rows)
+        + len(checkin_rows)
+        + len(checkin_log_rows)
+    )
     if total > MAX_TOTAL:
         raise HTTPException(422, "导入记录总数超出上限")
-    if not any(len(rows) for rows in collections.values()) and not maintenance_rows:
+    if (
+        not any(len(rows) for rows in collections.values())
+        and not maintenance_rows
+        and not checkin_rows
+    ):
         raise HTTPException(422, "文件里没有任何生活记录")
-    raw_ids = read_export_ids(payload)
+    raw_ids = read_export_ids(payload, "maintenance")
+    checkin_ids = read_export_ids(payload, "checkins")
 
     logs_by_item = {}
     for index, log in enumerate(log_rows, 1):
@@ -133,6 +176,15 @@ def import_data(
             raise HTTPException(422, "导入的完成历史中存在同一天重复记录")
         seen[log.completed_on] = log
 
+    checkin_logs_by_item = {}
+    for index, log in enumerate(checkin_log_rows, 1):
+        if log.checkin_id not in checkin_ids:
+            raise HTTPException(422, f"checkin_logs 第 {index} 条引用了不存在的打卡项目")
+        seen = checkin_logs_by_item.setdefault(log.checkin_id, {})
+        if log.checked_on in seen:
+            raise HTTPException(422, "导入的打卡记录中存在同一天重复")
+        seen[log.checked_on] = log
+
     user_id = identity.user.id
     db.execute(
         delete(MaintenanceLog).where(
@@ -141,7 +193,12 @@ def import_data(
             )
         )
     )
-    for model in (Maintenance, Task, Expense, Show, Milestone, Note):
+    db.execute(
+        delete(CheckInLog).where(
+            CheckInLog.checkin_id.in_(select(CheckIn.id).where(CheckIn.user_id == user_id))
+        )
+    )
+    for model in (Maintenance, CheckIn, Task, Expense, Show, Milestone, Note):
         db.execute(delete(model).where(model.user_id == user_id))
 
     for key, rows in collections.items():
@@ -180,6 +237,25 @@ def import_data(
                 )
             )
             imported_logs += 1
+    imported_checkin_logs = 0
+    for item_id, row in zip(checkin_ids, checkin_rows, strict=True):
+        item = CheckIn(
+            user_id=user_id,
+            created_at=row.created_at or datetime.now(UTC).replace(tzinfo=None),
+            **row.model_dump(exclude={"created_at"}),
+        )
+        db.add(item)
+        db.flush()
+        for log in (checkin_logs_by_item.get(item_id) or {}).values():
+            db.add(
+                CheckInLog(
+                    checkin_id=item.id,
+                    checked_on=log.checked_on,
+                    note=log.note,
+                    created_at=log.created_at or datetime.now(UTC).replace(tzinfo=None),
+                )
+            )
+            imported_checkin_logs += 1
     db.commit()
     return {
         "imported": {
@@ -190,5 +266,7 @@ def import_data(
             "notes": len(collections["notes"]),
             "maintenance": len(maintenance_rows),
             "maintenance_logs": imported_logs,
+            "checkins": len(checkin_rows),
+            "checkin_logs": imported_checkin_logs,
         }
     }

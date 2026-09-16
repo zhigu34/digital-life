@@ -22,6 +22,7 @@ const emit = defineEmits<{
   navigate: [page: Page];
   create: [collection: Collection];
   complete: [id: number];
+  checkin: [id: number];
 }>();
 const tasks = computed(() =>
   props.records.tasks
@@ -67,6 +68,11 @@ const maintenanceDue = computed(() =>
 );
 const alive = computed(() =>
   props.user.birthday ? daysBetween(props.user.birthday, props.today) : null,
+);
+const dueCheckins = computed(() =>
+  props.records.checkins
+    .filter((item) => item.active && item.kind === "daily" && !item.days.includes(props.today))
+    .slice(0, 3),
 );
 </script>
 <template>
@@ -195,6 +201,32 @@ const alive = computed(() =>
             'text-orange': maintenanceTiming(item, today).remaining < 0,
           }"
           >{{ maintenanceTiming(item, today).label }}</span
+        ><AppIcon name="chevron" :size="14" />
+      </button>
+    </section>
+    <section v-if="dueCheckins.length" class="maintenance-reminder-panel" aria-label="今日打卡">
+      <header>
+        <div>
+          <span class="mini-symbol sky"><AppIcon name="checkins" :size="18" /></span>
+          <div>
+            <h2>今天还没打卡</h2>
+            <p>{{ dueCheckins.length }} 项每日必做在等你</p>
+          </div>
+        </div>
+        <button class="text-button" @click="emit('navigate', 'checkins')">
+          全部打卡<AppIcon name="chevron" :size="15" />
+        </button>
+      </header>
+      <button
+        v-for="item in dueCheckins"
+        :key="item.id"
+        class="maintenance-reminder-row"
+        :aria-label="`打卡 ${item.title}`"
+        :disabled="busy"
+        @click="emit('checkin', item.id)"
+      >
+        <span>{{ item.title }}</span
+        ><span>点我打卡</span
         ><AppIcon name="chevron" :size="14" />
       </button>
     </section>

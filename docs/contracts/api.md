@@ -56,3 +56,7 @@ Backend CLI via `python -m app.cli`: `migrate`, `create-admin --username USER` (
 `GET /api/shows/metadata?keyword=1..80&media_type=anime|tv|movie&source=bangumi|tmdb`（登录会话）→ `{results:[{source,source_id,title,original_title,air_date,total_episodes,platform,image,seasons,air_status}]}`，最多 8 条。数据源由前端显式选择：bangumi（type 2 动画 / type 6 三次元，image 来自 lain.bgm.tv）或 tmdb（需 `DIGITAL_LIFE_TMDB_API_KEY`，逐候选拉取详情获得 seasons 与 air_status：airing/ended/upcoming/released，image 来自 image.tmdb.org）。仅在用户手动触发时调用一次；未知 media_type/source 400、TMDB 未配置 key 400、关键词空白/超长 422、上游任何故障 502、功能禁用 503。
 
 `GET /api/shows/{id}/poster`（登录会话）返回该条目的封面图片：后端仅从 image.tmdb.org / lain.bgm.tv 白名单主机下载（上限 5MB，JPEG/PNG/WebP），按账号归属校验，缓存于数据目录 `posters/`，响应 `Cache-Control: private, max-age=604800`；无封面 404、来源不授信 400、下载失败 502。Show 记录新增可选字段 `source/source_id/poster_path/seasons/air_status`（Alembic `0004`），导出/导入完整支持。不落库、不自动写入；该路由注册在通用 `/api/shows/{id}` 之前。
+
+## 打卡（2026-09-16）
+
+`GET/POST /api/checkins`、`GET/PATCH/DELETE /api/checkins/{id}` 提供独立账号的打卡项目。CheckIn：`{id,title,notes,kind:'daily'|'ongoing',active,created_at}`，title 1–120，notes ≤4000；列表响应额外含 `days`（最近 400 个已打卡日期，升序）与 `total_count`。`POST /api/checkins/{id}/check` 接收 `{checked_on?,note?}`，缺省为用户时区今天；未来日期 422、同日重复 409、已归档 400，201 返回更新后项目。`DELETE /api/checkins/{id}/check/{checked_on}` 撤销某天（无记录 404）。`GET /api/checkins/{id}/logs` 按日期倒序。删除项目级联删除记录。导出为 `checkins`、`checkin_logs`；导入按 id 映射重建，悬空引用/同日重复 422。数据表由 Alembic `0005` 创建；CLI 恢复严格校验 `0005`。

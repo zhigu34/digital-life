@@ -21,6 +21,7 @@ import ProfileView from "./views/ProfileView.vue";
 import AdminView from "./views/AdminView.vue";
 import MaintenanceView from "./views/MaintenanceView.vue";
 import NotesView from "./views/NotesView.vue";
+import CheckInsView from "./views/CheckInsView.vue";
 const user = ref<User | null>(null),
   initializing = ref(true),
   loading = ref(false),
@@ -35,6 +36,7 @@ const records = reactive<Records>({
   milestones: [],
   maintenance: [],
   notes: [],
+  checkins: [],
 });
 const stats = ref<Stats | null>(null);
 const page = ref<Page>("today"),
@@ -48,6 +50,7 @@ const navigation: [Page, string, string][] = [
   ["today", "今日概览", "你的生活，此刻"],
   ["calendar", "日历", ""],
   ["tasks", "待办清单", ""],
+  ["checkins", "打卡", ""],
   ["expenses", "周期费用", ""],
   ["shows", "追剧片单", ""],
   ["milestones", "重要日子", ""],
@@ -58,6 +61,7 @@ const pageLabels: Record<Page, string> = {
   today: "今日概览",
   calendar: "日历",
   tasks: "待办清单",
+  checkins: "打卡",
   expenses: "周期费用",
   shows: "追剧片单",
   milestones: "重要日子",
@@ -70,6 +74,7 @@ const mobileNavLabels: Record<string, string> = {
   today: "今日",
   calendar: "日历",
   tasks: "待办",
+  checkins: "打卡",
   expenses: "费用",
   shows: "追剧",
   milestones: "日子",
@@ -90,6 +95,7 @@ function clear() {
     milestones: [],
     maintenance: [],
     notes: [],
+    checkins: [],
   });
   stats.value = null;
   editing.value = null;
@@ -116,7 +122,7 @@ async function load() {
   loading.value = true;
   error.value = "";
   try {
-    const [tasks, expenses, shows, milestones, maintenance, notes, statsData] =
+    const [tasks, expenses, shows, milestones, maintenance, notes, checkins, statsData] =
       await Promise.all([
         api<Records["tasks"]>("/tasks"),
         api<Records["expenses"]>("/expenses"),
@@ -124,6 +130,7 @@ async function load() {
         api<Records["milestones"]>("/milestones"),
         api<Records["maintenance"]>("/maintenance"),
         api<Records["notes"]>("/notes"),
+        api<Records["checkins"]>("/checkins"),
         api<Stats>(`/stats?end_month=${today.value.slice(0, 7)}`),
       ]);
     if (version === accountVersion) {
@@ -134,6 +141,7 @@ async function load() {
         milestones,
         maintenance,
         notes,
+        checkins,
       });
       stats.value = statsData;
     }
@@ -472,6 +480,7 @@ onUnmounted(() => {
         @navigate="navigate"
         @create="open"
         @complete="(id) => action('tasks', id, 'status', { status: 'done' })"
+        @checkin="(id) => mutate(`/checkins/${id}/check`, 'POST', {}, '已打卡，继续保持')"
       /><CalendarView
         v-else-if="page === 'calendar'"
         :records="records"
@@ -500,6 +509,15 @@ onUnmounted(() => {
         @error="handleError"
         @notice="notify"
         @remove="removeMaintenance"
+      /><CheckInsView
+        v-else-if="page === 'checkins'"
+        :key="user.id"
+        :items="records.checkins"
+        :today="today"
+        :parent-busy="busy"
+        @refresh="load"
+        @error="handleError"
+        @notice="notify"
       /><NotesView
         v-else-if="page === 'notes'"
         :key="user.id"

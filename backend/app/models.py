@@ -88,6 +88,28 @@ class Note(Owned, Base):
     created_at: Mapped[datetime] = mapped_column(DateTime)
 
 
+class CheckIn(Owned, Base):
+    __tablename__ = "checkins"
+    title: Mapped[str] = mapped_column(String(120))
+    notes: Mapped[str] = mapped_column(Text, default="")
+    kind: Mapped[str] = mapped_column(String(10))
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class CheckInLog(Base):
+    __tablename__ = "checkin_logs"
+    __table_args__ = (UniqueConstraint("checkin_id", "checked_on", name="uq_checkin_logs_day"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    checkin_id: Mapped[int] = mapped_column(
+        ForeignKey("checkins.id", ondelete="CASCADE"),
+        index=True,
+    )
+    checked_on: Mapped[date] = mapped_column(Date)
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+
+
 class Maintenance(Owned, Base):
     __tablename__ = "maintenance"
     title: Mapped[str] = mapped_column(String(120))

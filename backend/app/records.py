@@ -8,7 +8,17 @@ from sqlalchemy.orm import Session
 from app.auth import Identity, authenticated, validated_patch
 from app.database import get_db
 from app.maintenance_schemas import MaintenanceLogView, MaintenanceView
-from app.models import Expense, Maintenance, MaintenanceLog, Milestone, Note, Show, Task
+from app.models import (
+    CheckIn,
+    CheckInLog,
+    Expense,
+    Maintenance,
+    MaintenanceLog,
+    Milestone,
+    Note,
+    Show,
+    Task,
+)
 from app.schemas import (
     MAX_EPISODES,
     ExpensePatch,
@@ -189,6 +199,34 @@ def export_data(identity: Identity = Depends(authenticated), db: Session = Depen
             .join(Maintenance)
             .where(Maintenance.user_id == identity.user.id)
             .order_by(MaintenanceLog.id)
+        )
+    ]
+    data["checkins"] = [
+        {
+            "id": row.id,
+            "title": row.title,
+            "notes": row.notes,
+            "kind": row.kind,
+            "active": row.active,
+            "created_at": row.created_at,
+        }
+        for row in db.scalars(
+            select(CheckIn).where(CheckIn.user_id == identity.user.id).order_by(CheckIn.id)
+        )
+    ]
+    data["checkin_logs"] = [
+        {
+            "id": row.id,
+            "checkin_id": row.checkin_id,
+            "checked_on": row.checked_on,
+            "note": row.note,
+            "created_at": row.created_at,
+        }
+        for row in db.scalars(
+            select(CheckInLog)
+            .join(CheckIn)
+            .where(CheckIn.user_id == identity.user.id)
+            .order_by(CheckInLog.id)
         )
     ]
     return data
