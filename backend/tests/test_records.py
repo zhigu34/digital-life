@@ -123,8 +123,14 @@ def test_show_richer_metadata_and_completion_date(accounts):
     assert unchanged["completed_on"] == first_date
     explicit = alice.patch(path, headers=ah, json={"completed_on": "2020-01-02"}).json()
     assert explicit["completed_on"] == "2020-01-02"
-    restored = alice.patch(path, headers=ah, json={"completed_on": None}).json()
-    assert restored["completed_on"] is not None
+    cleared = alice.patch(path, headers=ah, json={"completed_on": None}).json()
+    assert cleared["completed_on"] is None
+    unchanged_empty = alice.patch(path, headers=ah, json={"title": "已完成但不记录日期"}).json()
+    assert unchanged_empty["completed_on"] is None
+    watching_again = alice.patch(path, headers=ah, json={"status": "watching"}).json()
+    assert watching_again["completed_on"] is None
+    completed_again = alice.patch(path, headers=ah, json={"status": "completed"}).json()
+    assert completed_again["completed_on"] is not None
 
 
 @pytest.mark.parametrize(
