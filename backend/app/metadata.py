@@ -130,9 +130,7 @@ def search_tmdb(keyword: str, kind: str, api_key: str) -> list[dict]:
                     {
                         "total_episodes": 1,
                         "seasons": None,
-                        "air_status": TMDB_MOVIE_STATUS.get(
-                            detail.get("status", ""), "upcoming"
-                        )
+                        "air_status": TMDB_MOVIE_STATUS.get(detail.get("status", ""), "upcoming")
                         if detail
                         else None,
                         "platform": None,
