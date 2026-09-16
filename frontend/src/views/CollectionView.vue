@@ -238,14 +238,20 @@ const dueLabel = (date: string) => {
       v-else
       :class="[
         'record-list',
-        { 'card-grid': collection === 'shows' || collection === 'milestones' },
+        {
+          'card-grid': collection === 'shows' || collection === 'milestones',
+          'has-shows': collection === 'shows',
+        },
       ]"
     >
       <article
         v-for="item in filtered"
         :key="item.id"
         class="record-card"
-        :class="{ 'is-done': 'status' in item && item.status === 'done' }"
+        :class="{
+          'is-done': 'status' in item && item.status === 'done',
+          'show-card': collection === 'shows',
+        }"
       >
         <template v-if="collection === 'tasks' && 'due_date' in item"
           ><button
@@ -328,11 +334,9 @@ const dueLabel = (date: string) => {
               :src="`/api/shows/${item.id}/poster`"
               :alt="item.title"
               loading="lazy"
-            /><template v-else>
-              <AppIcon name="shows" :size="42" /><span>{{
-                labels[item.media_type]
-              }}</span></template
-            ><span v-if="item.score" class="show-score"
+            /><AppIcon v-else name="shows" :size="30" /><span
+              v-if="item.score"
+              class="show-score"
               >★ {{ item.score }}</span
             >
           </div>
@@ -351,7 +355,7 @@ const dueLabel = (date: string) => {
                     item.update_weekday
                   ]
                 }}更新</span
-              >
+              ><span class="show-kind">{{ labels[item.media_type] }}</span>
             </div>
             <h3>{{ item.title }}</h3>
             <p v-if="item.notes" class="record-notes">{{ item.notes }}</p>

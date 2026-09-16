@@ -1022,14 +1022,35 @@ svg {
   padding: 6px 10px;
   justify-content: flex-end;
 }
+.card-grid .show-card {
+  flex-direction: row;
+  align-items: stretch;
+  gap: 0;
+}
+.card-grid .show-card .record-body {
+  flex: 1;
+  min-width: 0;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+}
+.card-grid .show-card .record-actions {
+  border-top: none;
+  border-left: 1px solid var(--border);
+  align-self: center;
+  padding: 8px 10px;
+}
 .show-cover {
-  height: 120px;
+  width: 92px;
+  flex: none;
+  align-self: stretch;
   background: linear-gradient(135deg, #e9eee0, #d9e3ce);
   display: flex;
   align-items: center;
   justify-content: center;
   color: #a1b18e;
   position: relative;
+  overflow: hidden;
 }
 .show-cover.anime {
   background: linear-gradient(135deg, #ebe6f0, #d8d4e4);
@@ -1039,12 +1060,8 @@ svg {
   background: linear-gradient(135deg, #efeadf, #e3d7c4);
   color: #bca989;
 }
-.show-cover > span:not(.show-score) {
-  position: absolute;
-  bottom: 12px;
-  left: 17px;
-  font-size: 10px;
-  color: #7d8b72;
+.show-kind {
+  color: var(--muted);
 }
 .show-score {
   position: absolute;
@@ -2006,7 +2023,8 @@ input:disabled {
 .show-cover img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  background: #f3f5ee;
 }
 .tag.airing {
   background: #e7eefb;
@@ -2704,6 +2722,9 @@ input:disabled {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
   }
+  .card-grid.has-shows {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .card-grid .record-card .record-body {
     min-width: 0;
     padding: 15px;
@@ -2716,15 +2737,18 @@ input:disabled {
     width: 100%;
   }
   .show-cover {
-    height: 95px;
+    width: 62px;
   }
   .show-cover svg {
-    width: 33px;
+    width: 24px;
   }
-  .show-cover > span:not(.show-score) {
-    font-size: 8px;
-    left: 13px;
-    bottom: 10px;
+  .card-grid .show-card .record-body {
+    padding: 13px 14px;
+  }
+  .card-grid .show-card .record-actions {
+    width: auto;
+    border-left: none;
+    align-self: center;
   }
   .show-score {
     font-size: 9px;
