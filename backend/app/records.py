@@ -62,6 +62,11 @@ def owned(db, model, item_id, user_id):
     return record
 
 
+def set_show_completion_date(values):
+    if values["status"] == "completed" and values["completed_on"] is None:
+        values["completed_on"] = date.today()
+
+
 def register_collection(name, model, create_schema, patch_schema, view):
     def list_records(identity: Identity = Depends(authenticated), db: Session = Depends(get_db)):
         return db.scalars(
@@ -83,6 +88,8 @@ def register_collection(name, model, create_schema, patch_schema, view):
         values = payload.model_dump()
         if model in (Task, Note, Project):
             values["created_at"] = datetime.now(UTC).replace(tzinfo=None)
+        if model is Show:
+            set_show_completion_date(values)
         item = model(user_id=identity.user.id, **values)
         db.add(item)
         db.commit()
@@ -95,8 +102,10 @@ def register_collection(name, model, create_schema, patch_schema, view):
         db: Session = Depends(get_db),
     ):
         item = owned(db, model, item_id, identity.user.id)
-        values = validated_patch(create_schema, item, payload)
-        for key, value in values.model_dump().items():
+        values = validated_patch(create_schema, item, payload).model_dump()
+        if model is Show:
+            set_show_completion_date(values)
+        for key, value in values.items():
             setattr(item, key, value)
         db.commit()
         return item
@@ -175,6 +184,8 @@ def advance_show(
             raise HTTPException(400, "集数已达到支持的上限（1,000,000）")
         show.progress += 1
         show.status = "completed" if show.progress == show.total else "watching"
+        if show.status == "completed" and show.completed_on is None:
+            show.completed_on = date.today()
     db.commit()
     return show
 
