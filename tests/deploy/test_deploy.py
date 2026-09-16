@@ -147,3 +147,21 @@ exit 0
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class ComposeEnvironmentTest(unittest.TestCase):
+    """Every .env knob the app reads at runtime must reach the backend container."""
+
+    def test_backend_container_receives_all_runtime_env_vars(self):
+        compose = Path(__file__).resolve().parents[2] / 'docker-compose.yml'
+        text = compose.read_text(encoding='utf-8')
+        backend_section = text.split('  frontend:')[0]
+        for var in (
+            'DIGITAL_LIFE_DATA_DIR',
+            'DIGITAL_LIFE_SECURE_COOKIE',
+            'DIGITAL_LIFE_TRUSTED_ORIGINS',
+            'DIGITAL_LIFE_DISABLE_METADATA',
+            'DIGITAL_LIFE_TMDB_API_KEY',
+            'TZ',
+        ):
+            self.assertIn(var, backend_section, f'{var} missing from backend environment')
