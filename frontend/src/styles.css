@@ -731,6 +731,10 @@ svg {
   background: #f1eef6;
   color: #9b8aaa;
 }
+.sky {
+  background: #e7eefb;
+  color: #5b7ba8;
+}
 .peach {
   background: #faf0e5;
   color: #c8a272;
@@ -1480,6 +1484,213 @@ input:disabled {
   font-size: 10px;
   color: #b0b7a6;
 }
+/* Calendar */
+.calendar-card {
+  padding: 22px;
+}
+.calendar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.calendar-head > div {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.calendar-head strong {
+  font-size: 15px;
+}
+.calendar-month-count {
+  font-size: 10px;
+  color: var(--muted);
+}
+.calendar-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.calendar-today-button {
+  padding: 7px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--green);
+  background: var(--green-soft);
+}
+.icon-flip {
+  transform: scaleX(-1);
+}
+.calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.calendar-weekdays span {
+  text-align: center;
+  font-size: 9px;
+  color: var(--muted);
+  letter-spacing: 2px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+.calendar-cell {
+  min-height: 86px;
+  border-radius: 8px;
+  background: var(--soft);
+}
+.calendar-cell.outside {
+  background: transparent;
+  min-height: auto;
+  display: flex;
+  justify-content: flex-end;
+  padding: 4px 6px 0;
+}
+.calendar-cell.outside .cell-day {
+  color: #c9d1c3;
+  font-size: 10px;
+  width: auto;
+  height: auto;
+}
+.cell-hit {
+  width: 100%;
+  min-height: 86px;
+  padding: 6px 6px 7px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  border-radius: 8px;
+  text-align: left;
+}
+.cell-hit:hover {
+  background: #edf1e6;
+}
+.cell-hit.selected {
+  background: var(--green-soft);
+  box-shadow: inset 0 0 0 1.5px var(--green);
+}
+.cell-day {
+  font-size: 11px;
+  font-weight: 550;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink);
+}
+.cell-hit.today .cell-day {
+  background: var(--green);
+  color: #fff;
+}
+.cal-chip {
+  max-width: 100%;
+  font-size: 9px;
+  line-height: 1.3;
+  padding: 2px 5px;
+  border-radius: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 550;
+}
+.cal-chip.task {
+  background: #e7eefb;
+  color: #5b7ba8;
+}
+.cal-chip.expense {
+  background: #faf0e5;
+  color: #b08548;
+}
+.cal-chip.milestone {
+  background: #f1eef6;
+  color: #8d7ba6;
+}
+.cal-chip.maintenance {
+  background: #eaf1e9;
+  color: #5f8163;
+}
+.cal-chip.overdue {
+  color: #b4543c;
+}
+.cell-more {
+  font-size: 9px;
+  color: var(--muted);
+}
+.calendar-legend {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+.legend-chip {
+  font-size: 10px;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.legend-chip::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+}
+.legend-chip.task::before {
+  background: #5b7ba8;
+}
+.legend-chip.expense::before {
+  background: #c8a272;
+}
+.legend-chip.milestone::before {
+  background: #9b8aaa;
+}
+.legend-chip.maintenance::before {
+  background: #6b8f60;
+}
+.calendar-day-panel {
+  margin-top: 18px;
+}
+.calendar-event-row {
+  width: 100%;
+}
+.calendar-event-row:hover {
+  background: var(--soft);
+}
+.tag.task {
+  background: #e7eefb;
+  color: #5b7ba8;
+}
+.tag.expense {
+  background: #faf0e5;
+  color: #b08548;
+}
+.tag.milestone {
+  background: #f1eef6;
+  color: #8d7ba6;
+}
+.tag.maintenance {
+  background: #eaf1e9;
+  color: #5f8163;
+}
+.calendar-day-empty {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 26px 23px;
+  color: var(--muted);
+  font-size: 11px;
+}
 [data-theme="dark"] {
   --bg: #18231e;
   --surface: #202c25;
@@ -1523,6 +1734,56 @@ input:disabled {
 }
 [data-theme="dark"] .breadcrumb strong {
   color: #b2bea9;
+}
+[data-theme="dark"] .cell-hit:hover {
+  background: #2a382b;
+}
+[data-theme="dark"] .calendar-cell.outside .cell-day {
+  color: #4c5b4a;
+}
+[data-theme="dark"] .cal-chip.task {
+  background: #2b3542;
+  color: #8fb0d8;
+}
+[data-theme="dark"] .cal-chip.expense {
+  background: #40362a;
+  color: #d8b184;
+}
+[data-theme="dark"] .cal-chip.milestone {
+  background: #37303f;
+  color: #b3a1cb;
+}
+[data-theme="dark"] .cal-chip.maintenance {
+  background: #2f4130;
+  color: #9dc3a0;
+}
+[data-theme="dark"] .cal-chip.overdue {
+  color: #e08b70;
+}
+[data-theme="dark"] .mini-symbol.sky {
+  color: #8fb0d8;
+}
+[data-theme="dark"] .mini-symbol.peach {
+  color: #d8b184;
+}
+[data-theme="dark"] .mini-symbol.lavender {
+  color: #b3a1cb;
+}
+[data-theme="dark"] .tag.task {
+  background: #2b3542;
+  color: #8fb0d8;
+}
+[data-theme="dark"] .tag.expense {
+  background: #40362a;
+  color: #d8b184;
+}
+[data-theme="dark"] .tag.milestone {
+  background: #37303f;
+  color: #b3a1cb;
+}
+[data-theme="dark"] .tag.maintenance {
+  background: #2f4130;
+  color: #9dc3a0;
 }
 @media (min-width: 1550px) {
   .page {
@@ -2393,7 +2654,7 @@ input:disabled {
 }
 @media (max-width: 700px) {
   .mobile-nav {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(7, minmax(0, 1fr));
     padding-left: 6px;
     padding-right: 6px;
   }
@@ -2477,5 +2738,62 @@ input:disabled {
   }
   .sidebar-label {
     margin-top: 30px;
+  }
+}
+@media (max-width: 700px) {
+  .calendar-card {
+    padding: 13px 9px;
+  }
+  .calendar-head {
+    margin-bottom: 12px;
+    padding: 0 4px;
+  }
+  .calendar-head strong {
+    font-size: 14px;
+  }
+  .calendar-month-count {
+    display: none;
+  }
+  .calendar-weekdays span {
+    font-size: 8px;
+    letter-spacing: 0;
+  }
+  .calendar-cell {
+    min-height: 62px;
+  }
+  .cell-hit {
+    min-height: 62px;
+    padding: 4px 3px 5px;
+    gap: 2px;
+  }
+  .cell-day {
+    width: 18px;
+    height: 18px;
+    font-size: 10px;
+  }
+  .cal-chip {
+    font-size: 8px;
+    padding: 1.5px 4px;
+    border-radius: 3px;
+  }
+  .cell-more {
+    font-size: 8px;
+  }
+  .calendar-legend {
+    gap: 10px;
+    margin-top: 12px;
+    padding: 0 4px;
+  }
+  .legend-chip {
+    font-size: 9px;
+  }
+  .calendar-day-panel {
+    margin-top: 13px;
+  }
+  .calendar-day-panel .compact-list {
+    padding: 0 16px;
+  }
+  .calendar-day-empty {
+    padding: 20px 16px;
   }
 }

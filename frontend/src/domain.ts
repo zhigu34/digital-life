@@ -19,9 +19,9 @@ const stamp = (date: string) => Date.parse(`${date}T00:00:00Z`);
 export function daysBetween(from: string, to: string): number {
   return Math.round((stamp(to) - stamp(from)) / 86400000);
 }
-const iso = (year: number, month: number, day: number) =>
+export const iso = (year: number, month: number, day: number) =>
   `${year.toString().padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-const monthDays = (year: number, month: number) =>
+export const monthDays = (year: number, month: number) =>
   month === 2
     ? year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
       ? 29

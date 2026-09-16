@@ -75,4 +75,10 @@ export interface Records {
   milestones: Milestone[];
   maintenance: Maintenance[];
 }
-export type Page = "today" | Collection | "maintenance" | "profile" | "admin";
+export type Page =
+  | "today"
+  | "calendar"
+  | Collection
+  | "maintenance"
+  | "profile"
+  | "admin";

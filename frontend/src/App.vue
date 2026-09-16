@@ -14,6 +14,7 @@ import AppIcon from "./components/AppIcon.vue";
 import RecordForm from "./components/RecordForm.vue";
 import LoginView from "./views/LoginView.vue";
 import TodayView from "./views/TodayView.vue";
+import CalendarView from "./views/CalendarView.vue";
 import CollectionView from "./views/CollectionView.vue";
 import ProfileView from "./views/ProfileView.vue";
 import AdminView from "./views/AdminView.vue";
@@ -41,6 +42,7 @@ const now = ref(new Date()),
   );
 const navigation: [Page, string, string][] = [
   ["today", "今日概览", "你的生活，此刻"],
+  ["calendar", "日历", ""],
   ["tasks", "待办清单", ""],
   ["expenses", "周期费用", ""],
   ["shows", "追剧片单", ""],
@@ -49,6 +51,7 @@ const navigation: [Page, string, string][] = [
 ];
 const pageLabels: Record<Page, string> = {
   today: "今日概览",
+  calendar: "日历",
   tasks: "待办清单",
   expenses: "周期费用",
   shows: "追剧片单",
@@ -56,6 +59,15 @@ const pageLabels: Record<Page, string> = {
   maintenance: "周期维护",
   profile: "个人设置",
   admin: "账户管理",
+};
+const mobileNavLabels: Record<string, string> = {
+  today: "今日",
+  calendar: "日历",
+  tasks: "待办",
+  expenses: "费用",
+  shows: "追剧",
+  milestones: "日子",
+  maintenance: "维护",
 };
 let noticeTimer: ReturnType<typeof setTimeout>,
   clockTimer: ReturnType<typeof setInterval>;
@@ -430,6 +442,11 @@ onUnmounted(() => {
         @navigate="navigate"
         @create="open"
         @complete="(id) => action('tasks', id, 'status', { status: 'done' })"
+      /><CalendarView
+        v-else-if="page === 'calendar'"
+        :records="records"
+        :today="today"
+        @navigate="navigate"
       /><CollectionView
         v-else-if="['tasks', 'expenses', 'shows', 'milestones'].includes(page)"
         :key="page"
@@ -474,19 +491,7 @@ onUnmounted(() => {
         :class="{ active: page === id }"
         @click="navigate(id)"
       >
-        <AppIcon :name="id" :size="21" /><span>{{
-          id === "today"
-            ? "今日"
-            : id === "tasks"
-              ? "待办"
-              : id === "expenses"
-                ? "费用"
-                : id === "shows"
-                  ? "追剧"
-                  : id === "milestones"
-                    ? "日子"
-                    : "维护"
-        }}</span>
+        <AppIcon :name="id" :size="21" /><span>{{ mobileNavLabels[id] }}</span>
       </button>
     </nav>
     <RecordForm
