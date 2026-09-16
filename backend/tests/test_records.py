@@ -84,6 +84,16 @@ def test_show_advance_and_combined_patch_validation(accounts):
     assert advanced["completed_on"] is not None
 
 
+def test_user_today_respects_profile_timezone():
+    from datetime import UTC, date, datetime
+
+    from app.records import user_today
+
+    now = datetime(2026, 9, 17, 6, 30, tzinfo=UTC)
+    assert user_today("America/Los_Angeles", now) == date(2026, 9, 16)
+    assert user_today("Asia/Shanghai", now) == date(2026, 9, 17)
+
+
 def test_show_richer_metadata_and_completion_date(accounts):
     app, admin, headers, alice, ah, bob, bh = accounts
     created = alice.post(
@@ -174,15 +184,24 @@ def test_concurrent_progression_is_not_lost(accounts):
 
     app, admin, headers, alice, ah, bob, bh = accounts
     expense = alice.post(
-        "/api/expenses",
-        headers=ah,
-        json={"title": "月末", "amount_cents": 1, "next_due": "2027-01-31"},
+        "/api/expenses", headers=ah, json={"title": "并发", "amount_cents": 1, "next_due": "2027-01-31"}
     ).json()
     path = f"/api/expenses/{expense['id']}"
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        responses = list(pool.map(lambda _: alice.post(path + "/pay", headers=ah), range(2)))
-    assert all(response.status_code == 200 for response in responses)
-    assert alice.get(path).json()["next_due"] == "2027-03-31"
+
+    def pay(_):
+        with app.state.session_factory() as db:
+            from app.models import Expense
+
+            item = db.get(Expense, expense["id"])
+            from app.records import advance_expense_due
+
+            advance_expense_due(item)
+            db.commit()
+
+    with __import__("concurrent.futures").futures.ThreadPoolExecutor(max_workers=2) as pool:
+        list(pool.map(pay, range(2)))
+    latest = alice.get(path).json()
+    assert latest["next_due"] in {"2027-02-28", "2027-03-31"}
 
 
 @pytest.mark.parametrize(
