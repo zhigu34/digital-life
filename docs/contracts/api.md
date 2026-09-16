@@ -40,3 +40,9 @@ Backend CLI via `python -m app.cli`: `migrate`, `create-admin --username USER` (
 `POST /api/maintenance/{id}/complete` 接收 `completed_on`、可选 `cost_cents`、`currency`、`notes`，201 返回更新后的事项。`GET /api/maintenance/{id}/history` 返回按日期、ID倒序的历史；`PATCH /api/maintenance/{id}/history/{log_id}` 修改历史日期、费用、币种或备注，200 返回更新后的事项。同日重复409、未来/越界日期422、停用事项新增完成400、他人资源404。创建时生成首条历史，最新完成日期取全部历史最大值。DELETE 事项级联删除历史。
 
 `GET /api/export` 新增 `maintenance`、`maintenance_logs` 数组，仍仅含当前用户记录。
+
+## 统计与导入（2026-09-16）
+
+`GET /api/stats?end_month=YYYY-MM` 返回以 end_month 结尾的连续 12 个月窗口：每月 `{month, expense_due: {币种: 分}, maintenance_cost: {币种: 分}}`，以及 `shows` 汇总 `{watching,planned,completed,paused,episodes_watched}`。费用口径与「本月应付」一致（仅启用中、从 next_due 整周期外推、不假设支付、月末 anchor、不回溯）；维护费用来自完成历史 `cost_cents` 按完成月归集。非法/缺失月份 422；未登录 401；仅含当前会话用户数据。
+
+`POST /api/import` 接收 `/api/export` 生成的完整 JSON 对象，整体替换当前账号的生活记录（tasks、expenses、shows、milestones、maintenance 及 maintenance_logs），返回 `{imported: {各集合计数}}`。要求文件含 `user` 对象标记；集合列表缺失按空处理（兼容旧版导出）；单集合上限 10,000、总数上限 50,000；逐条按创建校验规则验证，首条无效即 422 且不改动现有数据；维护事项 id 引用、同日重复历史、日期越界均 422。导入后 `last_completed`/`next_due` 从导入的历史重算。不修改登录、密码和个人资料；不影响其他账号。

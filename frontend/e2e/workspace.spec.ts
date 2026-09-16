@@ -1,5 +1,6 @@
 import { test, expect, request, type Page } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
+import { writeFileSync } from 'node:fs'
 
 const baseURL = process.env.E2E_BASE_URL || 'http://127.0.0.1:5173'
 const password = 'Only-for-browser-tests-2026!'
@@ -225,6 +226,36 @@ test('statistics panels summarize expenses, maintenance costs and shows', async 
   await expect(showsStats.locator('.summary-card').filter({ hasText: '累计看完' })).toContainText('0')
   await page.screenshot({ path: testInfo.outputPath('stats.png'), fullPage: true })
   expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false)
+})
+
+test('profile import restores an export into a fresh account', async ({ page }, testInfo) => {
+  const source = await account()
+  const api = await request.newContext({ baseURL, extraHTTPHeaders: { Origin: baseURL } })
+  const sessionResponse = await api.post('/api/auth/login', { data: { username: source, password } })
+  const session = await sessionResponse.json()
+  const created = await api.post('/api/tasks', {
+    headers: { 'X-CSRF-Token': session.csrf_token },
+    data: { title: '搬家用的待办', priority: 'high' },
+  })
+  expect(created.status(), await created.text()).toBe(201)
+  const exportData = await (await api.get('/api/export')).json()
+  expect(exportData.tasks).toHaveLength(1)
+  await api.dispose()
+  const file = testInfo.outputPath('export.json')
+  writeFileSync(file, JSON.stringify(exportData))
+  await login(page, await account())
+  await navigate(page, '待办清单')
+  await add(page, '添加待办', '会被替换的旧待办')
+  await save(page)
+  await navigate(page, '个人设置')
+  await page.getByLabel('选择要导入的 JSON 文件').setInputFiles(file)
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toContainText('待办 1')
+  await dialog.getByRole('button', { name: '替换并导入', exact: true }).click()
+  await expect(page.getByText('已导入 1 条记录', { exact: true })).toBeVisible()
+  await navigate(page, '待办清单')
+  await expect(page.getByRole('heading', { name: '搬家用的待办', exact: true })).toBeVisible()
+  await expect(page.getByText('会被替换的旧待办', { exact: true })).toHaveCount(0)
 })
 
 test('recurring maintenance tracks completion, corrections, reminders and private history', async ({ page }, testInfo) => {

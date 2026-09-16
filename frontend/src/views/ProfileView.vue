@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { reactive, ref } from "vue";
+import { computed, reactive, ref } from "vue";
 import { browserTimezone } from "../domain";
 import type { User } from "../types";
 import AppIcon from "../components/AppIcon.vue";
+import ModalDialog from "../components/ModalDialog.vue";
 const props = defineProps<{ user: User; busy: boolean }>();
 const emit = defineEmits<{
   profile: [data: unknown];
   password: [data: unknown];
   export: [];
+  import: [data: unknown];
   logout: [];
 }>();
 const profile = reactive({
@@ -26,6 +28,45 @@ function saveProfile() {
   emit("profile", { ...profile, birthday: profile.birthday || null });
 }
 const password = reactive({ current_password: "", new_password: "" });
+const pendingImport = ref<Record<string, unknown> | null>(null);
+const importError = ref("");
+const fileInput = ref<HTMLInputElement>();
+const importSummary = computed(() => {
+  const data = pendingImport.value;
+  if (!data) return "";
+  const parts = [
+    ["待办", "tasks"],
+    ["费用", "expenses"],
+    ["追剧", "shows"],
+    ["日子", "milestones"],
+    ["维护", "maintenance"],
+  ].map(
+    ([label, key]) =>
+      `${label} ${(Array.isArray(data[key]) ? data[key].length : 0) as number}`,
+  );
+  return parts.join(" · ");
+});
+async function pickImportFile(event: Event) {
+  importError.value = "";
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file) return;
+  try {
+    const parsed = JSON.parse(await file.text());
+    if (typeof parsed !== "object" || parsed === null || !("user" in parsed))
+      throw new Error("请选择 digital-life 导出的 JSON 文件");
+    pendingImport.value = parsed as Record<string, unknown>;
+  } catch (error) {
+    importError.value =
+      error instanceof SyntaxError ? "文件不是有效的 JSON" : (error as Error).message;
+  }
+}
+function confirmImport() {
+  if (!pendingImport.value) return;
+  emit("import", pendingImport.value);
+  pendingImport.value = null;
+}
 </script>
 <template>
   <section class="page">
@@ -123,13 +164,34 @@ const password = reactive({ current_password: "", new_password: "" });
           <p class="muted">
             将个人资料和全部生活记录导出为 JSON 文件，妥善留存属于你的日常。
           </p>
-          <button
-            class="button secondary"
-            :disabled="busy"
-            @click="emit('export')"
-          >
-            <AppIcon name="download" :size="17" />导出我的数据
-          </button>
+          <div class="data-actions">
+            <button
+              class="button secondary"
+              :disabled="busy"
+              @click="emit('export')"
+            >
+              <AppIcon name="download" :size="17" />导出我的数据
+            </button>
+            <button
+              class="button secondary"
+              :disabled="busy"
+              @click="fileInput?.click()"
+            >
+              <AppIcon name="up" :size="17" />导入数据
+            </button>
+            <input
+              ref="fileInput"
+              type="file"
+              accept="application/json,.json"
+              class="visually-hidden"
+              aria-label="选择要导入的 JSON 文件"
+              @change="pickImportFile"
+            />
+          </div>
+          <p v-if="importError" class="form-error" role="alert">{{ importError }}</p>
+          <p class="field-hint">
+            导入会把文件里的生活记录替换本账号当前的全部记录；登录和个人设置不受影响。
+          </p>
         </section>
         <button
           class="button logout-button"
@@ -140,5 +202,24 @@ const password = reactive({ current_password: "", new_password: "" });
         </button>
       </div>
     </div>
+    <ModalDialog
+      v-if="pendingImport"
+      title="确认导入这份文件？"
+      subtitle="导入会先清空再恢复，请确认文件来自你的导出。"
+      @close="pendingImport = null"
+    >
+      <p class="muted">{{ importSummary }}</p>
+      <p class="field-hint">
+        本账号当前的全部生活记录（待办、费用、追剧、重要日子、维护及其历史）将被替换；登录、密码和个人设置保持不变。
+      </p>
+      <div class="modal-actions">
+        <button class="button secondary" @click="pendingImport = null">
+          取消
+        </button>
+        <button class="button danger" @click="confirmImport">
+          替换并导入
+        </button>
+      </div>
+    </ModalDialog>
   </section>
 </template>

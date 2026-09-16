@@ -293,6 +293,23 @@ async function exportData() {
     busy.value = false;
   }
 }
+async function importData(data: unknown) {
+  busy.value = true;
+  error.value = "";
+  try {
+    const result = await api<{ imported: Record<string, number> }>(
+      "/import",
+      "POST",
+      data,
+    );
+    await load();
+    notify(`已导入 ${Object.values(result.imported).reduce((a, b) => a + b, 0)} 条记录`);
+  } catch (e) {
+    handleError(e);
+  } finally {
+    busy.value = false;
+  }
+}
 const media = window.matchMedia("(prefers-color-scheme: dark)");
 function theme() {
   document.documentElement.dataset.theme =
@@ -482,6 +499,7 @@ onUnmounted(() => {
         @profile="profile"
         @password="password"
         @export="exportData"
+        @import="importData"
         @logout="logout"
       /><AdminView
         v-else-if="page === 'admin' && user.is_admin"
