@@ -134,40 +134,41 @@ def search_tmdb(keyword: str, kind: str, api_key: str) -> list[dict]:
         }
         # Season and airing status live on the detail endpoint; a failing
         # detail lookup only degrades that one candidate.
+        detail: dict = {}
         try:
-            detail = _send_resilient(
+            detail_response = _send_resilient(
                 "get",
                 f"{TMDB_API}/{kind}/{item['id']}",
                 params={"api_key": api_key, "language": "zh-CN"},
             )
-            detail.raise_for_status()
-            detail = detail.json()
+            detail_response.raise_for_status()
+            detail = detail_response.json()
         except httpx.HTTPError:
             detail = {}
-            if kind == "tv":
-                entry.update(
-                    {
-                        "total_episodes": detail.get("number_of_episodes") or None,
-                        "seasons": detail.get("number_of_seasons") or None,
-                        "air_status": TMDB_TV_STATUS.get(detail.get("status", "")),
-                        "platform": None,
-                    }
-                )
-            else:
-                entry.update(
-                    {
-                        "total_episodes": 1,
-                        "seasons": None,
-                        "air_status": TMDB_MOVIE_STATUS.get(detail.get("status", ""), "upcoming")
-                        if detail
-                        else None,
-                        "platform": None,
-                    }
-                )
-            poster = entry.pop("poster", None)
-            entry["image"] = f"{TMDB_IMAGE}{poster}" if poster else None
-            results.append(entry)
-        return results
+        if kind == "tv":
+            entry.update(
+                {
+                    "total_episodes": detail.get("number_of_episodes") or None,
+                    "seasons": detail.get("number_of_seasons") or None,
+                    "air_status": TMDB_TV_STATUS.get(detail.get("status", "")),
+                    "platform": None,
+                }
+            )
+        else:
+            entry.update(
+                {
+                    "total_episodes": 1,
+                    "seasons": None,
+                    "air_status": TMDB_MOVIE_STATUS.get(detail.get("status", ""), "upcoming")
+                    if detail
+                    else None,
+                    "platform": None,
+                }
+            )
+        poster = entry.pop("poster", None)
+        entry["image"] = f"{TMDB_IMAGE}{poster}" if poster else None
+        results.append(entry)
+    return results
 
 
 @router.get("/metadata")

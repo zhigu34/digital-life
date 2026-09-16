@@ -306,3 +306,76 @@ def test_send_resilient_does_not_retry_timeouts(monkeypatch):
     with pytest.raises(httpx.ReadTimeout):
         metadata_module._send_resilient("get", "https://api.bgm.tv")
     assert calls == [False]
+
+
+def _respond_over(fake_details, search_payload):
+    """Fake _send_resilient: return the search payload, then per-hit details."""
+
+    def fake_send_resilient(method, url, **kwargs):
+        request = httpx.Request(method, url)
+        if "/search/" in url:
+            return httpx.Response(200, json=search_payload, request=request)
+        show_id = url.rsplit("/", 1)[-1]
+        if show_id in fake_details:
+            return httpx.Response(200, json=fake_details[show_id], request=request)
+        return httpx.Response(500, json={"status_message": "detail failed"}, request=request)
+
+    return fake_send_resilient
+
+
+def test_search_tmdb_returns_every_hit_with_detail_fields(monkeypatch):
+    """Every search hit is returned (not just the first), each enriched from
+    its own detail lookup; the poster path becomes a full image URL."""
+    search = {
+        "results": [
+            {
+                "id": 94997,
+                "name": "漫长的季节",
+                "original_name": "The Long Season",
+                "first_air_date": "2023-04-22",
+                "poster_path": "/abc.jpg",
+            },
+            {"id": 555, "name": "另一部", "poster_path": None},
+        ]
+    }
+    details = {
+        "94997": {"number_of_episodes": 12, "number_of_seasons": 1, "status": "Ended"},
+        "555": {"number_of_episodes": 8, "number_of_seasons": 2, "status": "Returning Series"},
+    }
+    monkeypatch.setattr(metadata_module, "_send_resilient", _respond_over(details, search))
+    results = metadata_module.search_tmdb("漫长的季节", "tv", "test-key")
+    assert len(results) == 2  # both hits, not only the first
+    first, second = results
+    assert first["source"] == "tmdb"
+    assert first["source_id"] == 94997
+    assert first["total_episodes"] == 12
+    assert first["seasons"] == 1
+    assert first["air_status"] == "ended"
+    assert first["image"] == f"{metadata_module.TMDB_IMAGE}/abc.jpg"
+    assert second["air_status"] == "airing"
+    assert second["image"] is None
+
+
+def test_search_tmdb_degrades_when_detail_fails(monkeypatch):
+    search = {"results": [{"id": 9, "name": "测试", "poster_path": "/p.jpg"}]}
+    monkeypatch.setattr(metadata_module, "_send_resilient", _respond_over({}, search))
+    results = metadata_module.search_tmdb("测试", "tv", "test-key")
+    assert len(results) == 1
+    assert results[0]["total_episodes"] is None
+    assert results[0]["seasons"] is None
+    assert results[0]["air_status"] is None
+    assert results[0]["image"] == f"{metadata_module.TMDB_IMAGE}/p.jpg"
+
+
+def test_search_tmdb_marks_movies_as_single_episode(monkeypatch):
+    search = {"results": [{"id": 42, "title": "测试电影", "poster_path": "/m.jpg"}]}
+    details = {"42": {"status": "Released"}}
+    monkeypatch.setattr(metadata_module, "_send_resilient", _respond_over(details, search))
+    released = metadata_module.search_tmdb("测试电影", "movie", "test-key")
+    assert released[0]["total_episodes"] == 1
+    assert released[0]["air_status"] == "released"
+
+    monkeypatch.setattr(metadata_module, "_send_resilient", _respond_over({}, search))
+    unknown = metadata_module.search_tmdb("测试电影", "movie", "test-key")
+    assert unknown[0]["total_episodes"] == 1
+    assert unknown[0]["air_status"] is None
