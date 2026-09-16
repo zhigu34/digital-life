@@ -1,6 +1,6 @@
 # Digital Life 接手状态
 
-更新：2026-09-16。首版及周期维护功能均已合入 GitHub `main` 并由用户确认在 NAS 首次部署成功。同日多个新功能迭代已合入 `main`（快进到 `56bf8ab`）：统一日历、统计图表、JSON 导入、文字随记、影视元数据搜索（Bangumi），随后扩展为 Bangumi/TMDB 双信息源独立可选（`codex/tmdb-metadata`，含封面后端代理缓存、季数、完结/连载状态，Show 新字段 + 迁移 `0004`）。main Actions `35060471430` 的 backend、frontend、docker-e2e 全部通过；NAS 待用户部署。TMDB 真实接口因无 key 未实测（stub 单测 + E2E 已覆盖），待用户在 NAS `.env` 填写 `DIGITAL_LIFE_TMDB_API_KEY` 后实际验证。
+更新：2026-09-16。首版及周期维护功能均已合入 GitHub `main` 并由用户确认在 NAS 首次部署成功。同日多个新功能迭代已合入 `main`（快进到 `ede5949`）：统一日历、统计图表、JSON 导入、文字随记、影视元数据搜索（Bangumi），随后扩展为 Bangumi/TMDB 双信息源独立可选（含封面后端代理缓存、季数、完结/连载状态，Show 新字段 + 迁移 `0004`），以及打卡功能（每日必做/在做两类，连续与累计天数、补卡、撤销、归档，迁移 `0005`，今日总览一键打卡）。main Actions `35062580018` 的 backend、frontend、docker-e2e 全部通过；NAS 待用户部署。TMDB 真实接口因无 key 未实测（stub 单测 + E2E 已覆盖），待用户在 NAS `.env` 填写 `DIGITAL_LIFE_TMDB_API_KEY` 后实际验证。
 
 ## 用户确认的方向
 
@@ -38,7 +38,7 @@
 ## 接下来
 
 1. NAS 首次部署已于 2026-09-16 由用户确认成功（用户反馈；本会话未远程连接 NAS 复核）。
-2. 用户在 NAS 执行 `git pull --ff-only && ./deploy`（0004 迁移前 deploy 会自动备份旧库）。本次包含 Alembic `0003`/`0004` 与新增 `DIGITAL_LIFE_DISABLE_METADATA`（默认关闭）和 `DIGITAL_LIFE_TMDB_API_KEY`（默认空）配置项；追剧元数据搜索覆盖动漫、剧集、电影，Bangumi 与 TMDB 双源独立可选，封面由后端代理并缓存于数据目录 `posters/`。
+2. 用户在 NAS 执行 `git pull --ff-only && ./deploy`（迁移前 deploy 会自动备份旧库）。本次包含 Alembic `0003`/`0004`/`0005` 与新增 `DIGITAL_LIFE_DISABLE_METADATA`（默认关闭）和 `DIGITAL_LIFE_TMDB_API_KEY`（默认空）配置项；追剧元数据搜索覆盖动漫、剧集、电影（Bangumi 与 TMDB 双源独立可选，封面由后端代理缓存于 `posters/`）；打卡支持每日必做与在做两类。
 3. 如后续通过域名公网访问，按 README 配置 HTTPS、Secure Cookie 和可信 Origin；建议先补登录失败限速和 NAS 侧自动定期备份（2026-09-16 评审提出，尚未实施，仅内网使用时可放缓）。
 4. 当前没有已知阻断功能使用的问题；后续功能继续从 `main` 创建新的 `codex/` 分支。用户已授权固定交付流程：分支 CI 全绿后直接合入 `main` 推送，NAS 部署由用户执行（见 AGENTS.md 协作与交付）。
 
