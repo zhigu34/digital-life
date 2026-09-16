@@ -60,6 +60,11 @@ export interface ShowMetadataResult {
   air_status: "airing" | "ended" | "upcoming" | "released" | null;
 }
 
+export type ShowMetadataPatch = Pick<
+  ShowFormDraft,
+  "title" | "total" | "source" | "source_id" | "poster_path" | "seasons" | "air_status"
+>;
+
 export type NormalizeShowResult =
   | { data: Omit<Show, "id">; error: null }
   | { data: null; error: string };
@@ -101,18 +106,21 @@ export function normalizeShowPayload(
   return { data, error: null };
 }
 
-export function applyShowMetadata(
-  draft: ShowFormDraft,
-  result: ShowMetadataResult,
-): ShowFormDraft {
+export function showMetadataPatch(result: ShowMetadataResult): ShowMetadataPatch {
   return {
-    ...draft,
     title: result.title,
-    total: result.total_episodes ?? draft.total,
+    total: result.total_episodes ?? "",
     source: result.source,
     source_id: result.source_id,
     poster_path: result.image ?? "",
     seasons: result.seasons ?? "",
     air_status: result.air_status ?? "",
   };
+}
+
+export function applyShowMetadata(
+  draft: ShowFormDraft,
+  result: ShowMetadataResult,
+): ShowFormDraft {
+  return { ...draft, ...showMetadataPatch(result) };
 }
