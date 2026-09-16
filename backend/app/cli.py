@@ -17,7 +17,7 @@ from app.models import Base, User
 from app.schemas import UserCreate
 from app.security import hash_password
 
-SCHEMA_REVISION = "0006"
+SCHEMA_REVISION = "0007"
 
 
 def create_admin(settings: Settings, username: str, password: str):
@@ -98,113 +98,80 @@ def validate_database(path: Path):
                                 row[2] for row in db.execute(f'PRAGMA index_info("{index_name}")')
                             )
                         )
-                for constraint in table.constraints:
-                    if isinstance(constraint, UniqueConstraint):
-                        if tuple(constraint.columns.keys()) not in unique_keys:
-                            raise ValueError(f"Backup unique constraint missing in table {name}")
-    except sqlite3.DatabaseError as error:
-        raise ValueError("Backup is not a valid Digital Life SQLite database") from error
+                expected_uniques = {
+                    tuple(column.name for column in constraint.columns)
+                    for constraint in table.constraints
+                    if isinstance(constraint, UniqueConstraint)
+                }
+                expected_uniques.update(
+                    (column.name,) for column in table.columns if column.unique
+                )
+                if not expected_uniques.issubset(unique_keys):
+                    raise ValueError(f"Backup uniqueness constraint missing in table {name}")
+    except sqlite3.DatabaseError as exc:
+        raise ValueError("Backup is not a valid SQLite database") from exc
 
 
-def _staged_snapshot(source: Path, destination_dir: Path) -> Path:
-    if not source.is_file():
-        raise ValueError("Input database does not exist")
-    destination_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-    fd, name = tempfile.mkstemp(prefix=".digital-life-", suffix=".db", dir=destination_dir)
+def backup(settings: Settings, destination: Path):
+    settings.data_dir.mkdir(parents=True, exist_ok=True)
+    source = settings.database_path
+    if not source.exists():
+        raise ValueError("Database does not exist")
+    with sqlite3.connect(source) as live, sqlite3.connect(destination) as copy:
+        live.backup(copy)
+    validate_database(destination)
+
+
+def restore(settings: Settings, source: Path):
+    settings.data_dir.mkdir(parents=True, exist_ok=True)
+    if not source.exists():
+        raise ValueError("Backup does not exist")
+    fd, staged_name = tempfile.mkstemp(prefix=".digital-life-", suffix=".db", dir=settings.data_dir)
     os.close(fd)
-    staged = Path(name)
+    staged = Path(staged_name)
     try:
-        with sqlite3.connect(source.resolve().as_uri() + "?mode=ro", uri=True) as original:
-            with sqlite3.connect(staged) as target:
-                original.backup(target)
-                # Produce a standalone snapshot without a companion WAL.
-                target.execute("PRAGMA journal_mode=DELETE")
-                if target.execute("PRAGMA integrity_check").fetchall() != [("ok",)]:
-                    raise ValueError("Backup failed SQLite integrity check")
-                if target.execute("PRAGMA foreign_key_check").fetchall():
-                    raise ValueError("Backup contains broken foreign keys")
-        return staged
-    except Exception:
-        staged.unlink(missing_ok=True)
-        raise
-
-
-def _sync_file(path):
-    with path.open("rb") as handle:
-        os.fsync(handle.fileno())
-
-
-def backup(settings: Settings, output: str | Path):
-    destination = Path(output).resolve()
-    if destination == settings.database_path.resolve():
-        raise ValueError("Backup output must differ from the live database")
-    staged = _staged_snapshot(settings.database_path, destination.parent)
-    try:
-        _sync_file(staged)
-        os.replace(staged, destination)
-    finally:
-        staged.unlink(missing_ok=True)
-
-
-def restore(settings: Settings, source: str | Path):
-    source = Path(source).resolve()
-    if source == settings.database_path.resolve():
-        raise ValueError("Restore input must differ from the live database")
-    staged = _staged_snapshot(source, settings.data_dir)
-    try:
+        with sqlite3.connect(source) as source_db, sqlite3.connect(staged) as staged_db:
+            source_db.backup(staged_db)
         validate_database(staged)
-        # The operator must stop all backend processes before invoking restore.
-        # Never carry pre-backup authentication sessions back into service.
         with sqlite3.connect(staged) as db:
             db.execute("DELETE FROM sessions")
-        _sync_file(staged)
-        for suffix in ("-wal", "-shm"):
-            Path(str(settings.database_path) + suffix).unlink(missing_ok=True)
         os.replace(staged, settings.database_path)
-        settings.database_path.chmod(0o600)
     finally:
         staged.unlink(missing_ok=True)
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Digital Life operator commands")
-    commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("migrate", help="Apply pending database migrations")
-    admin = commands.add_parser(
-        "create-admin", help="Create an administrator; no defaults are seeded"
-    )
-    admin.add_argument("--username", required=True)
-    backup_cmd = commands.add_parser("backup", help="Take a consistent SQLite online backup")
-    backup_cmd.add_argument("--output", required=True)
-    restore_cmd = commands.add_parser("restore", help="Restore a backup, with backend stopped")
-    restore_cmd.add_argument("--input", required=True)
-    commands.add_parser("pending-migration", help="Exit 1 when database migrations are pending")
-    args = parser.parse_args()
+def migration_status(settings: Settings):
+    pending = migration_pending(settings)
+    return "pending" if pending else "current"
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(prog="digital-life")
+    sub = parser.add_subparsers(dest="command", required=True)
+    sub.add_parser("migrate")
+    create = sub.add_parser("create-admin")
+    create.add_argument("--username", required=True)
+    sub.add_parser("migration-status")
+    backup_parser = sub.add_parser("backup")
+    backup_parser.add_argument("destination", type=Path)
+    restore_parser = sub.add_parser("restore")
+    restore_parser.add_argument("source", type=Path)
+    args = parser.parse_args(argv)
+    settings = Settings.from_env()
     try:
-        settings = Settings.from_env()
         if args.command == "migrate":
             migrate(settings)
         elif args.command == "create-admin":
-            password = os.getenv("DIGITAL_LIFE_ADMIN_PASSWORD") or getpass.getpass(
-                "Admin password: "
-            )
+            password = os.getenv("DIGITAL_LIFE_ADMIN_PASSWORD") or getpass.getpass("Password: ")
             create_admin(settings, args.username, password)
+        elif args.command == "migration-status":
+            print(migration_status(settings))
         elif args.command == "backup":
-            backup(settings, args.output)
-        elif args.command == "pending-migration":
-            if migration_pending(settings):
-                print("pending")
-                parser.exit(1)
-            print("up-to-date")
-        else:
-            restore(settings, args.input)
-    except ValidationError:
-        parser.exit(
-            1, "Invalid account: username 3–32 permitted characters; password 12–128 chars.\n"
-        )
-    except (ValueError, OSError, sqlite3.DatabaseError) as error:
-        parser.exit(1, f"Operation failed: {error}\n")
-    print(f"{args.command}: complete")
+            backup(settings, args.destination)
+        elif args.command == "restore":
+            restore(settings, args.source)
+    except (ValueError, ValidationError) as exc:
+        parser.error(str(exc))
 
 
 if __name__ == "__main__":
