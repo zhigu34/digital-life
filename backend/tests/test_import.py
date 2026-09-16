@@ -69,6 +69,7 @@ def test_import_replaces_account_data_from_export(accounts):
         "maintenance_logs": 2,
         "checkins": 0,
         "checkin_logs": 0,
+        "projects": 0,
     }
     # Importing twice replaces instead of duplicating.
     again = alice.post("/api/import", json=export, headers=headers)

@@ -22,7 +22,7 @@ DAYS_WINDOW = 400
 class CheckInPayload(Payload):
     title: Annotated[str, Field(min_length=1, max_length=120)]
     notes: Notes = ""
-    kind: Literal["daily", "ongoing"]
+    kind: Literal["daily"] = "daily"
     active: StrictBool = True
 
 
@@ -61,7 +61,7 @@ class CheckInPatch(BaseModel):
 
     title: str | None = None
     notes: str | None = None
-    kind: Literal["daily", "ongoing"] | None = None
+    kind: Literal["daily"] | None = None
     active: bool | None = None
 
 

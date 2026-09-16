@@ -29,6 +29,7 @@ import {
   CalendarDays,
   NotebookPen,
   Flame,
+  Rocket,
   Sparkles,
   MoreHorizontal,
 } from "lucide-vue-next";
@@ -62,6 +63,7 @@ const icons = {
   calendar: CalendarDays,
   notes: NotebookPen,
   checkins: Flame,
+  projects: Rocket,
   sparkles: Sparkles,
   more: MoreHorizontal,
 };

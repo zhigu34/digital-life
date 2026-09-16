@@ -16,6 +16,7 @@ from app.models import (
     MaintenanceLog,
     Milestone,
     Note,
+    Project,
     Show,
     Task,
 )
@@ -30,6 +31,9 @@ from app.schemas import (
     NotePatch,
     NotePayload,
     NoteView,
+    ProjectPatch,
+    ProjectPayload,
+    ProjectView,
     ResourceId,
     ShowPatch,
     ShowPayload,
@@ -47,6 +51,7 @@ COLLECTIONS = {
     "shows": (Show, ShowPayload, ShowPatch, ShowView),
     "milestones": (Milestone, MilestonePayload, MilestonePatch, MilestoneView),
     "notes": (Note, NotePayload, NotePatch, NoteView),
+    "projects": (Project, ProjectPayload, ProjectPatch, ProjectView),
 }
 
 
@@ -76,7 +81,7 @@ def register_collection(name, model, create_schema, patch_schema, view):
         db: Session = Depends(get_db),
     ):
         values = payload.model_dump()
-        if model in (Task, Note):
+        if model in (Task, Note, Project):
             values["created_at"] = datetime.now(UTC).replace(tzinfo=None)
         item = model(user_id=identity.user.id, **values)
         db.add(item)

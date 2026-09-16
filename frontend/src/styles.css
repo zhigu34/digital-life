@@ -218,6 +218,7 @@ svg {
   display: flex;
   flex-direction: column;
   z-index: 20;
+  overflow-y: auto;
 }
 .sidebar .brand {
   padding: 0 5px;
@@ -782,7 +783,9 @@ svg {
 }
 .mobile-nav,
 .mobile-avatar,
-.mobile-admin {
+.mobile-admin,
+.mobile-more-sheet,
+.mobile-more-backdrop {
   display: none;
 }
 .heading-count {
@@ -1836,6 +1839,87 @@ input:disabled {
   flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
+}
+/* Projects */
+.project-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.project-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 17px 19px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.project-body {
+  flex: 1;
+  min-width: 0;
+}
+.project-body h3 {
+  font-size: 13px;
+}
+.project-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.project-actions .text-button {
+  font-size: 11px;
+}
+.tag.active {
+  background: #eaf1e9;
+  color: #5f8163;
+}
+.tag.paused {
+  background: #faf0e5;
+  color: #b08548;
+}
+.tag.done {
+  background: #f1eef6;
+  color: #8d7ba6;
+}
+/* Mobile more sheet */
+.mobile-more-backdrop {
+  position: fixed;
+  inset: 0;
+  background: #18231ead;
+  z-index: 40;
+}
+.mobile-more-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 62px;
+  z-index: 41;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  border-radius: 16px 16px 0 0;
+  padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  box-shadow: 0 -8px 30px #18231e26;
+}
+.mobile-more-sheet > button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 13px 4px;
+  border-radius: 10px;
+  font-size: 11px;
+  color: var(--ink);
+  background: var(--soft);
+}
+.mobile-more-sheet > button.active {
+  background: var(--green-soft);
+  color: var(--green);
+  font-weight: 600;
 }
 /* Metadata lookup */
 .metadata-lookup {
@@ -3044,7 +3128,7 @@ input:disabled {
 }
 @media (max-width: 700px) {
   .mobile-nav {
-    grid-template-columns: repeat(9, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     padding-left: 6px;
     padding-right: 6px;
   }
@@ -3119,7 +3203,7 @@ input:disabled {
     font-size: 11px;
   }
 }
-@media (max-height: 790px) and (min-width: 701px) {
+@media (max-height: 880px) and (min-width: 701px) {
   .sidebar-note {
     display: none;
   }
@@ -3242,5 +3326,22 @@ input:disabled {
   }
   .checkin-week span i {
     font-size: 8px;
+  }
+}
+@media (max-width: 700px) {
+  .mobile-more-sheet,
+  .mobile-more-backdrop {
+    display: block;
+  }
+  .mobile-more-sheet {
+    display: grid;
+  }
+  .project-card {
+    padding: 14px 15px;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .project-actions {
+    justify-content: flex-end;
   }
 }

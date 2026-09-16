@@ -189,6 +189,17 @@ class MilestoneView(MilestonePayload):
     id: int
 
 
+class ProjectPayload(Payload):
+    title: Annotated[str, Field(min_length=1, max_length=120)]
+    notes: Notes = ""
+    status: Literal["active", "paused", "done"] = "active"
+
+
+class ProjectView(ProjectPayload):
+    id: int
+    created_at: datetime
+
+
 class NotePayload(Payload):
     content: Annotated[str, Field(min_length=1, max_length=4000)]
     entry_date: ISODate
@@ -218,3 +229,4 @@ ExpensePatch = patch_schema("ExpensePatch", ExpensePayload)
 ShowPatch = patch_schema("ShowPatch", ShowPayload)
 MilestonePatch = patch_schema("MilestonePatch", MilestonePayload)
 NotePatch = patch_schema("NotePatch", NotePayload)
+ProjectPatch = patch_schema("ProjectPatch", ProjectPayload)

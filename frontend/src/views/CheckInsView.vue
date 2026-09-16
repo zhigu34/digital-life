@@ -2,7 +2,7 @@
 import { computed, reactive, ref } from "vue";
 import { api, ApiError } from "../api";
 import type { CheckInItem, CheckInLogEntry } from "../types";
-import { currentStreak, countInRange, lastDays, weekdayLabel, daysSinceLastCheck } from "../checkin";
+import { currentStreak, countInRange, lastDays, weekdayLabel } from "../checkin";
 import AppIcon from "../components/AppIcon.vue";
 import EmptyState from "../components/EmptyState.vue";
 import ModalDialog from "../components/ModalDialog.vue";
@@ -24,24 +24,17 @@ const mode = ref<"create" | "edit" | "manage" | null>(null),
   filter = ref("all"),
   logs = ref<CheckInLogEntry[]>([]),
   logsLoading = ref(false);
-const form = reactive({ title: "", notes: "", kind: "daily", active: true });
+const form = reactive({ title: "", notes: "", active: true });
 const makeup = reactive({ checked_on: props.today, note: "" });
 const working = computed(() => busy.value || props.parentBusy);
 const tabs = [
   ["all", "全部"],
-  ["daily", "每日必做"],
-  ["ongoing", "在做"],
   ["archived", "已归档"],
 ] as const;
 const rows = computed(() =>
   props.items
-    .filter(
-      (item) =>
-        filter.value === "all"
-          ? item.active
-          : filter.value === "archived"
-            ? !item.active
-            : item.active && item.kind === filter.value,
+    .filter((item) =>
+      filter.value === "archived" ? !item.active : item.active,
     )
     .sort((a, b) => Number(b.active) - Number(a.active) || b.id - a.id),
 );
@@ -52,7 +45,7 @@ function openEditor(item?: CheckInItem) {
   error.value = "";
   selected.value = item ?? null;
   mode.value = item ? "edit" : "create";
-  Object.assign(form, item ?? { title: "", notes: "", kind: "daily", active: true });
+  Object.assign(form, item ?? { title: "", notes: "", active: true });
 }
 async function save() {
   if (working.value) return;
@@ -162,7 +155,6 @@ async function removeLog(log: CheckInLogEntry) {
     busy.value = false;
   }
 }
-const kindLabels: Record<string, string> = { daily: "每日必做", ongoing: "在做" };
 </script>
 <template>
   <section class="page checkins-page">
@@ -170,7 +162,7 @@ const kindLabels: Record<string, string> = { daily: "每日必做", ongoing: "�
       <div>
         <span class="eyebrow">SHOW UP EVERY DAY</span>
         <h1>打卡<span class="title-period">.</span></h1>
-        <p>每天必做的事和正在推进的事，点一下就算数。</p>
+        <p>每天必做的事，点一下就算数。</p>
       </div>
       <button class="button primary" :disabled="working" @click="openEditor()">
         <AppIcon name="plus" :size="18" />添加打卡
@@ -211,27 +203,13 @@ const kindLabels: Record<string, string> = { daily: "每日必做", ongoing: "�
         <div class="checkin-body">
           <div class="checkin-title-row">
             <h3>{{ item.title }}</h3>
-            <span :class="['tag', item.kind]">{{ kindLabels[item.kind] }}</span>
           </div>
           <p v-if="item.notes" class="record-notes">{{ item.notes }}</p>
           <p class="checkin-stats">
-            <template v-if="item.kind === 'daily'"
-              ><strong>连续 {{ streakOf(item) }}</strong> 天 · 累计
-              {{ item.total_count }} 天 · 本周 {{ weekOf(item) }} 天</template
-            >
-            <template v-else
-              >累计 <strong>{{ item.total_count }}</strong> 天 · 本周
-              {{ weekOf(item) }} 天 ·
-              {{
-                daysSinceLastCheck(item, today) === null
-                  ? "还没打过卡"
-                  : daysSinceLastCheck(item, today) === 0
-                    ? "今天刚打过"
-                    : `最近 ${daysSinceLastCheck(item, today)} 天前`
-              }}</template
-            >
+            <strong>连续 {{ streakOf(item) }}</strong> 天 · 累计
+            {{ item.total_count }} 天 · 本周 {{ weekOf(item) }} 天
           </p>
-          <div v-if="item.kind === 'daily'" class="checkin-week" aria-label="最近七天">
+          <div class="checkin-week" aria-label="最近七天">
             <span
               v-for="day in week"
               :key="day"
@@ -284,12 +262,6 @@ const kindLabels: Record<string, string> = { daily: "每日必做", ongoing: "�
             maxlength="120"
             placeholder="例如：健身1小时"
         /></label>
-        <label
-          >类型<select v-model="form.kind">
-            <option value="daily">每日必做（连续天数）</option>
-            <option value="ongoing">在做（累计天数）</option>
-          </select></label
-        >
         <label
           >备注 <span class="optional">选填</span
           ><textarea v-model="form.notes" rows="3" maxlength="4000"></textarea>

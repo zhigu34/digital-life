@@ -97,6 +97,14 @@ class CheckIn(Owned, Base):
     created_at: Mapped[datetime] = mapped_column(DateTime)
 
 
+class Project(Owned, Base):
+    __tablename__ = "projects"
+    title: Mapped[str] = mapped_column(String(120))
+    notes: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(10), default="active")
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+
+
 class CheckInLog(Base):
     __tablename__ = "checkin_logs"
     __table_args__ = (UniqueConstraint("checkin_id", "checked_on", name="uq_checkin_logs_day"),)

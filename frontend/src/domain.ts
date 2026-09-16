@@ -121,4 +121,5 @@ export const labels: Record<string, string> = {
   ended: "已完结",
   upcoming: "未开播",
   released: "已上映",
+  active: "进行中",
 };

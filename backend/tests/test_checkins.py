@@ -60,8 +60,12 @@ def test_checkin_crud_and_daily_uniqueness(accounts):
 
 def test_checkin_patch_archive_and_cascade_delete(accounts):
     _, _, _, alice, headers, _, _ = accounts
-    item = alice.post(
+    rejected = alice.post(
         "/api/checkins", json={"title": "项目开发", "kind": "ongoing"}, headers=headers
+    )
+    assert rejected.status_code == 422  # ongoing items live in projects now
+    item = alice.post(
+        "/api/checkins", json={"title": "读书半小时", "kind": "daily"}, headers=headers
     ).json()
     alice.post(f"/api/checkins/{item['id']}/check", json={}, headers=headers)
     patched = alice.patch(
@@ -135,5 +139,5 @@ def test_migrate_0004_to_0005_keeps_accounts_and_shows(tmp_path):
         )
         assert created.status_code == 201
     with sqlite3.connect(settings.database_path) as db:
-        assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0005",)
+        assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0006",)
         assert db.execute("PRAGMA foreign_key_check").fetchall() == []

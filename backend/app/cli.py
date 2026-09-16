@@ -17,7 +17,7 @@ from app.models import Base, User
 from app.schemas import UserCreate
 from app.security import hash_password
 
-SCHEMA_REVISION = "0005"
+SCHEMA_REVISION = "0006"
 
 
 def create_admin(settings: Settings, username: str, password: str):

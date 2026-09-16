@@ -29,7 +29,18 @@ async function login(page: Page, username: string, secret = password) {
   await expect(page.getByRole('status', { name: '正在同步记录' })).toHaveCount(0)
 }
 async function navigate(page: Page, name: string) {
-  await page.getByRole('button', { name, exact: true }).filter({ visible: true }).first().click()
+  const direct = page.getByRole('button', { name, exact: true }).filter({ visible: true }).first()
+  try {
+    await direct.click({ timeout: 2500 })
+    return
+  } catch {
+    // Not reachable directly (mobile keeps secondary pages in the more sheet).
+  }
+  await page.getByRole('button', { name: '更多页面' }).click()
+  await page
+    .getByRole('navigation', { name: '更多页面' })
+    .getByRole('button', { name, exact: true })
+    .click()
 }
 async function add(page: Page, button: string, title: string) {
   await page.getByRole('button', { name: button, exact: true }).first().click()
@@ -381,14 +392,13 @@ test('metadata search fills title and episode count for anime and drama', async 
   await page.unroute('**/api/shows/*/poster')
 })
 
-test('check-ins track daily streaks, ongoing totals and stay private', async ({ page }, testInfo) => {
+test('check-ins track daily streaks and stay private', async ({ page }, testInfo) => {
   const alice = await account(), bob = await account()
   await login(page, alice)
   await navigate(page, '打卡')
   await page.getByRole('button', { name: '添加打卡', exact: true }).first().click()
   let dialog = page.getByRole('dialog')
   await dialog.getByLabel('名称', { exact: true }).fill('健身1小时')
-  await dialog.getByRole('combobox', { name: '类型', exact: true }).selectOption('daily')
   await dialog.getByRole('button', { name: '保存', exact: true }).click()
   await expect(dialog).toHaveCount(0)
   // The today panel offers a one-tap check before the day starts.
@@ -417,17 +427,6 @@ test('check-ins track daily streaks, ongoing totals and stay private', async ({ 
   await dialog.getByRole('button', { name: '完成', exact: true }).click()
   await expect(habitCard).toContainText('连续 2')
   await expect(habitCard).toContainText('累计 2')
-  // Ongoing commitments count totals rather than streak pressure.
-  await page.getByRole('button', { name: '添加打卡', exact: true }).first().click()
-  dialog = page.getByRole('dialog')
-  await dialog.getByLabel('名称', { exact: true }).fill('项目开发')
-  await dialog.getByRole('combobox', { name: '类型', exact: true }).selectOption('ongoing')
-  await dialog.getByRole('button', { name: '保存', exact: true }).click()
-  await expect(dialog).toHaveCount(0)
-  await page.getByRole('button', { name: '打卡 项目开发', exact: true }).click()
-  const projectCard = page.locator('article').filter({ hasText: '项目开发' })
-  await expect(projectCard).toContainText('累计 1')
-  await expect(projectCard).toContainText('今天刚打过')
   await page.reload()
   await navigate(page, '打卡')
   await expect(habitCard).toContainText('连续 2')
@@ -439,6 +438,42 @@ test('check-ins track daily streaks, ongoing totals and stay private', async ({ 
   await navigate(page, '打卡')
   await expect(page.getByText('健身1小时', { exact: true })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: '从一件小事开始坚持', exact: true })).toBeVisible()
+})
+
+test('projects track ongoing work through the more sheet', async ({ page }, testInfo) => {
+  const alice = await account(), bob = await account()
+  await login(page, alice)
+  await navigate(page, '在做')
+  await page.getByRole('button', { name: '添加在做', exact: true }).first().click()
+  let dialog = page.getByRole('dialog')
+  await dialog.getByLabel('名称', { exact: true }).fill('项目开发')
+  await dialog.getByLabel('说明', { exact: false }).fill('先把生活工作台做扎实')
+  await dialog.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  const card = page.locator('article').filter({ hasText: '项目开发' })
+  await expect(card).toContainText('进行中')
+  await expect(card).toContainText('先把生活工作台做扎实')
+  await card.getByRole('button', { name: '完成', exact: true }).click()
+  await expect(card).toContainText('已完成')
+  await card.getByRole('button', { name: '编辑 项目开发', exact: true }).click()
+  dialog = page.getByRole('dialog')
+  await dialog.getByRole('combobox', { name: '状态', exact: true }).selectOption('paused')
+  await dialog.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(card).toContainText('暂搁')
+  await card.getByRole('button', { name: '继续', exact: true }).click()
+  await expect(card).toContainText('进行中')
+  await page.reload()
+  await navigate(page, '在做')
+  await expect(card).toContainText('进行中')
+  await page.screenshot({ path: testInfo.outputPath('projects.png'), fullPage: true })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false)
+  await navigate(page, '个人设置')
+  await page.getByRole('button', { name: '退出登录', exact: true }).filter({ visible: true }).first().click()
+  await login(page, bob)
+  await navigate(page, '在做')
+  await expect(page.getByText('项目开发', { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '把正在做的事放进来', exact: true })).toBeVisible()
 })
 
 test('recurring maintenance tracks completion, corrections, reminders and private history', async ({ page }, testInfo) => {

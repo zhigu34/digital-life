@@ -111,7 +111,7 @@ def test_migrate_0002_to_0003_keeps_accounts_and_maintenance(tmp_path):
         )
         assert created.status_code == 201
     with sqlite3.connect(settings.database_path) as db:
-        assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0005",)
+        assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0006",)
         assert db.execute("PRAGMA foreign_key_check").fetchall() == []
     # A 0002 snapshot no longer restores into this version without matching code.
     with pytest.raises(ValueError):

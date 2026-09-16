@@ -20,6 +20,7 @@ from app.models import (
     MaintenanceLog,
     Milestone,
     Note,
+    Project,
     Show,
     Task,
 )
@@ -29,6 +30,7 @@ from app.schemas import (
     MilestonePayload,
     NotePayload,
     Notes,
+    ProjectPayload,
     ShowPayload,
     TaskPayload,
 )
@@ -82,6 +84,11 @@ class CheckInRow(BaseModel):
     created_at: datetime | None = None
 
 
+class ProjectRow(ProjectPayload):
+    model_config = IGNORE_EXTRA
+    created_at: datetime | None = None
+
+
 class CheckInLogRow(BaseModel):
     model_config = IGNORE_EXTRA
     checkin_id: int
@@ -96,6 +103,7 @@ COLLECTION_ROWS = {
     "shows": ShowRow,
     "milestones": MilestoneRow,
     "notes": NoteRow,
+    "projects": ProjectRow,
 }
 MODELS = {
     "tasks": Task,
@@ -103,6 +111,7 @@ MODELS = {
     "shows": Show,
     "milestones": Milestone,
     "notes": Note,
+    "projects": Project,
 }
 
 
@@ -185,6 +194,21 @@ def import_data(
             raise HTTPException(422, "导入的打卡记录中存在同一天重复")
         seen[log.checked_on] = log
 
+    # Older exports mixed "ongoing" items into check-ins; they become
+    # projects now, with their day logs summarized into notes.
+    kept_checkins = []
+    converted_projects = []
+    for item_id, row in zip(checkin_ids, checkin_rows, strict=True):
+        if row.kind == "daily":
+            kept_checkins.append((item_id, row))
+            continue
+        notes = row.notes
+        days = sorted(checkin_logs_by_item.get(item_id, {}))
+        if days:
+            summary = f"原打卡 {len(days)} 条（{days[0]} ~ {days[-1]}）"
+            notes = f"{notes}\n{summary}" if notes else summary
+        converted_projects.append((row, notes))
+
     user_id = identity.user.id
     db.execute(
         delete(MaintenanceLog).where(
@@ -198,16 +222,27 @@ def import_data(
             CheckInLog.checkin_id.in_(select(CheckIn.id).where(CheckIn.user_id == user_id))
         )
     )
-    for model in (Maintenance, CheckIn, Task, Expense, Show, Milestone, Note):
+    for model in (Maintenance, CheckIn, Project, Task, Expense, Show, Milestone, Note):
         db.execute(delete(model).where(model.user_id == user_id))
 
     for key, rows in collections.items():
         model = MODELS[key]
         for row in rows:
             values = row.model_dump()
-            if model in (Task, Note):
+            if model in (Task, Note, Project):
                 values["created_at"] = row.created_at or datetime.now(UTC).replace(tzinfo=None)
             db.add(model(user_id=user_id, **values))
+
+    for row, notes in converted_projects:
+        db.add(
+            Project(
+                user_id=user_id,
+                title=row.title,
+                notes=notes,
+                status="active" if row.active else "paused",
+                created_at=row.created_at or datetime.now(UTC).replace(tzinfo=None),
+            )
+        )
 
     imported_logs = 0
     for item_id, row in zip(raw_ids, maintenance_rows, strict=True):
@@ -238,7 +273,7 @@ def import_data(
             )
             imported_logs += 1
     imported_checkin_logs = 0
-    for item_id, row in zip(checkin_ids, checkin_rows, strict=True):
+    for item_id, row in kept_checkins:
         item = CheckIn(
             user_id=user_id,
             created_at=row.created_at or datetime.now(UTC).replace(tzinfo=None),
@@ -266,7 +301,8 @@ def import_data(
             "notes": len(collections["notes"]),
             "maintenance": len(maintenance_rows),
             "maintenance_logs": imported_logs,
-            "checkins": len(checkin_rows),
+            "checkins": len(kept_checkins),
             "checkin_logs": imported_checkin_logs,
+            "projects": len(collections["projects"]) + len(converted_projects),
         }
     }

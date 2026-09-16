@@ -60,3 +60,7 @@ Backend CLI via `python -m app.cli`: `migrate`, `create-admin --username USER` (
 ## 打卡（2026-09-16）
 
 `GET/POST /api/checkins`、`GET/PATCH/DELETE /api/checkins/{id}` 提供独立账号的打卡项目。CheckIn：`{id,title,notes,kind:'daily'|'ongoing',active,created_at}`，title 1–120，notes ≤4000；列表响应额外含 `days`（最近 400 个已打卡日期，升序）与 `total_count`。`POST /api/checkins/{id}/check` 接收 `{checked_on?,note?}`，缺省为用户时区今天；未来日期 422、同日重复 409、已归档 400，201 返回更新后项目。`DELETE /api/checkins/{id}/check/{checked_on}` 撤销某天（无记录 404）。`GET /api/checkins/{id}/logs` 按日期倒序。删除项目级联删除记录。导出为 `checkins`、`checkin_logs`；导入按 id 映射重建，悬空引用/同日重复 422。数据表由 Alembic `0005` 创建；CLI 恢复严格校验 `0005`。
+
+## 在做（2026-09-16）
+
+`GET/POST /api/projects`、`GET/PATCH/DELETE /api/projects/{id}`，通用集合规则。Project：`{id,title,notes,status:'active'|'paused'|'done',created_at}`，title 1–120，notes ≤4000，status 默认 active。导出为 `projects`；导入支持，且旧导出中 `checkins.kind=='ongoing'` 的行会转换为 projects（其打卡记录以文字摘要并入 notes）。同期打卡的 kind 仅接受 `daily`（创建/修改 ongoing 返回 422）。Alembic `0006` 建表并把已有 ongoing 打卡迁入 projects；CLI 恢复严格校验 `0006`。
