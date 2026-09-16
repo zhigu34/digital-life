@@ -75,11 +75,12 @@ const isSeries = computed(() => props.item.media_type !== "movie");
       <template v-if="isSeries">
         <div class="show-progress show-progress-strong">
           <span>
-            <strong>{{ item.progress }}</strong>
+            已看 <strong>{{ item.progress }}</strong>
             <span class="muted"> / {{ item.total ?? "—" }} 集</span>
           </span>
           <button
             class="text-button show-advance"
+            aria-label="看完一集"
             :disabled="showAdvanceDisabled(item, busy)"
             @click="emit('advance', item.id)"
           >
