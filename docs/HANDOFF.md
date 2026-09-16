@@ -34,11 +34,12 @@
 - 周期维护验证提交：`1e3c31b`；功能分支和 [main Actions #34981612840](https://github.com/zhigu34/digital-life/actions/runs/34981612840) 的 backend、frontend、docker-e2e 均为 success。随后仅更新交付文档，未改应用代码。
 - 2026-09-16 五个新功能（分支 `codex/show-metadata`，提交 `f6d556a`、`985c662`、`c27d8f5`、`b9c7bb6`、`bfd4c00`）：统一日历视图（纯前端派生 + 9 项 Vitest + E2E）；统计图表（GET /api/stats 聚合 + CSS 柱状图 + 6 项后端测试 + E2E + ci-smoke 断言）；JSON 导入（POST /api/import 整体替换 + 4 项后端测试 + E2E 真实文件流程）；文字随记（Alembic 0003 + 集合注册 + NotesView + CLI 恢复版本升至 0003 + 迁移保留测试）；动漫元数据搜索（GET /api/shows/metadata 代理 Bangumi + DIGITAL_LIFE_DISABLE_METADATA 开关 + 5 项测试 + 路由桩 E2E + 真实接口冒烟）。本地验证：后端 115 项 pytest、Ruff、前端 30 项 Vitest、构建、Playwright 20 项（桌面/手机）、make test 全部通过；浏览器实测各页面桌面与手机布局无溢出。设计/实施文档见 docs/superpowers/{specs,plans}/2026-09-16-*.md。
 - deploy 完善验证提交：`17afac9`；[main Actions #35043909280](https://github.com/zhigu34/digital-life/actions/runs/35043909280) 的 backend、frontend、docker-e2e 均为 success。部署脚本参照 camera-recorder 重写：彩色输出与完整 `--help`、`--no-build`、构建错误摘要、变更文件列表、成功地址输出；部署前校验基础镜像架构与拉取、Web 端口冲突、磁盘空间与目录可写；健康检查失败状态立即终止；`DEPLOY_BUILD_VERBOSE`、`DEPLOY_AUTO_PULL`、`DEPLOY_SKIP_PORT_CHECK` 环境变量。未改动 camera-recorder 项目；未自动执行 docker prune，地址池耗尽仅提示手动处理。
+- NAS 真实部署排障提交：`c7439f8`。首次部署时 backend/frontend 容器均 healthy，但「Web 入口到后端的健康检查」失败：该检查从 backend 容器内请求 `http://frontend/health`，被容器携带的出网代理（`HTTP_PROXY` 等）拦截。修复为 exec 时清空代理变量直连内网，compose 的 `NO_PROXY` 默认追加 `frontend`；另修复 `logs/deploy.log` 每次部署被清空导致失败现场丢失的问题，改为保留前一份为 `deploy.log.1`。新增 2 条回归测试，本地 19 项全部通过。
 
 ## 接下来
 
 1. NAS 首次部署已于 2026-09-16 由用户确认成功（用户反馈；本会话未远程连接 NAS 复核）。
-2. 用户在 NAS 执行 `git pull --ff-only && ./deploy`（迁移前 deploy 会自动备份旧库）。累计包含 Alembic `0003`–`0006` 与新增 `DIGITAL_LIFE_DISABLE_METADATA`、`DIGITAL_LIFE_TMDB_API_KEY` 配置项；追剧元数据搜索覆盖动漫、剧集、电影（双源可选，封面后端代理）；打卡回归纯每日必做，「在做」为独立功能；移动端底部导航为 5 主入口 + 更多抽屉。
+2. 用户在 NAS 执行 `git pull --ff-only && ./deploy`（迁移前 deploy 会自动备份旧库）。`c7439f8` 修复了 NAS 首次部署中「Web 入口到后端的健康检查」被 backend 容器出网代理拦截的问题，重新部署即可通过；基线此前未记录，本次会重新构建并落库。累计包含 Alembic `0003`–`0006` 与新增 `DIGITAL_LIFE_DISABLE_METADATA`、`DIGITAL_LIFE_TMDB_API_KEY` 配置项；追剧元数据搜索覆盖动漫、剧集、电影（双源可选，封面后端代理）；打卡回归纯每日必做，「在做」为独立功能；移动端底部导航为 5 主入口 + 更多抽屉。
 3. 如后续通过域名公网访问，按 README 配置 HTTPS、Secure Cookie 和可信 Origin；建议先补登录失败限速和 NAS 侧自动定期备份（2026-09-16 评审提出，尚未实施，仅内网使用时可放缓）。
 4. 当前没有已知阻断功能使用的问题；后续功能继续从 `main` 创建新的 `codex/` 分支。用户已授权固定交付流程：分支 CI 全绿后直接合入 `main` 推送，NAS 部署由用户执行（见 AGENTS.md 协作与交付）。
 
