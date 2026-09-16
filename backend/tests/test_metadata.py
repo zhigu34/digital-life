@@ -265,13 +265,14 @@ def test_show_poster_rejects_missing_and_untrusted_sources(workspace, monkeypatc
     assert degraded.status_code == 502
 
 
-def test_send_resilient_retries_ipv4_when_network_unreachable(monkeypatch):
+def test_send_resilient_retries_any_connect_error_over_ipv4(monkeypatch):
     calls = []
 
     def fake_send(method, url, *, transport=None, **kwargs):
         calls.append(transport is not None)
         if transport is None:
-            raise httpx.ConnectError("[Errno 101] Network is unreachable")
+            # libc message variants differ (101 / -9 / -2 ...); all retry once.
+            raise httpx.ConnectError("[Errno -9] Address family for hostname not supported")
         return "ok"
 
     monkeypatch.setattr(metadata_module, "_send", fake_send)
@@ -279,10 +280,29 @@ def test_send_resilient_retries_ipv4_when_network_unreachable(monkeypatch):
     assert calls == [False, True]
 
 
-def test_send_resilient_passes_other_connect_errors_through(monkeypatch):
+def test_send_resilient_surfaces_the_ipv4_retry_failure(monkeypatch):
+    attempts = []
+
     def fake_send(method, url, *, transport=None, **kwargs):
-        raise httpx.ConnectError("[Errno -2] getaddrinfo failed")
+        attempts.append(transport is not None)
+        if transport is None:
+            raise httpx.ConnectError("[Errno 101] Network is unreachable")
+        raise httpx.ConnectError("[Errno -2] getaddrinfo failed over IPv4")
 
     monkeypatch.setattr(metadata_module, "_send", fake_send)
-    with pytest.raises(httpx.ConnectError):
+    with pytest.raises(httpx.ConnectError, match="IPv4"):
         metadata_module._send_resilient("get", "https://api.bgm.tv")
+    assert attempts == [False, True]
+
+
+def test_send_resilient_does_not_retry_timeouts(monkeypatch):
+    calls = []
+
+    def fake_send(method, url, *, transport=None, **kwargs):
+        calls.append(transport is not None)
+        raise httpx.ReadTimeout("slow upstream")
+
+    monkeypatch.setattr(metadata_module, "_send", fake_send)
+    with pytest.raises(httpx.ReadTimeout):
+        metadata_module._send_resilient("get", "https://api.bgm.tv")
+    assert calls == [False]

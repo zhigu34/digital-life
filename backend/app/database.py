@@ -44,6 +44,21 @@ def migrate(settings: Settings):
     settings.database_path.chmod(0o600)
 
 
+def migration_pending(settings: Settings) -> bool:
+    """True when the database revision differs from the migration head."""
+    from alembic.runtime.migration import MigrationContext
+    from alembic.script import ScriptDirectory
+
+    script = ScriptDirectory(str(ROOT / "migrations"))
+    engine = make_engine(settings)
+    try:
+        with engine.connect() as connection:
+            current = MigrationContext.configure(connection).get_current_revision()
+    finally:
+        engine.dispose()
+    return current != script.get_current_head()
+
+
 def session_factory(engine):
     return sessionmaker(bind=engine, expire_on_commit=False)
 

@@ -38,6 +38,7 @@ case "$*" in
   *" up -d --no-build") rm -f "$FAKE_STOP_FILE";;
   *"build"*) [ "${FAIL_BUILD:-0}" = 0 ] || exit 9;;
   *"run "*"migrate"*) [ "${FAIL_MIGRATE:-0}" = 0 ] || exit 10;;
+  *"run "*"pending-migration"*) [ "${FAKE_MIGRATION_PENDING:-1}" = 0 ] && exit 0; exit 1;;
   *" exec "*"urllib"*) [ "${FAIL_HEALTH:-0}" = 0 ] || exit 11;;
 esac
 exit 0
@@ -132,6 +133,40 @@ exit 0
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn(str(port), result.stderr)
         self.assertIn('已被其他进程占用', result.stderr)
+
+    def test_up_to_date_database_skips_stop_backup_and_migrate(self):
+        result = self.run_deploy(FAKE_MIGRATION_PENDING='0')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        log = self.log()
+        self.assertNotIn(' stop ', log)
+        self.assertNotIn(' backup ', log)
+        self.assertNotIn(' migrate', log)
+        self.assertIn('pending-migration', log)
+        self.assertIn('跳过停服备份与迁移', result.stdout)
+        self.assertTrue((self.root / 'logs' / 'deploy-state').exists())
+
+    def test_pending_database_still_stops_and_backs_up(self):
+        (self.root / 'data').mkdir()
+        (self.root / 'data' / 'digital-life.db').write_text('existing db')
+        result = self.run_deploy(FAKE_MIGRATION_PENDING='1')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        log = self.log()
+        self.assertIn(' stop backend', log)
+        self.assertIn(' backup --output', log)
+        self.assertIn('app.cli migrate', log)
+
+    def test_success_prunes_old_predeploy_backups_but_keeps_manual(self):
+        backups = self.root / 'backups'
+        backups.mkdir()
+        for index in range(12):
+            (backups / f'pre-deploy-20260916T000{index:02d}Z-{index}.db').write_text('x')
+        manual = backups / 'manual-20260101T000000Z-1.db'
+        manual.write_text('keep me')
+        result = self.run_deploy(FAKE_MIGRATION_PENDING='0')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        remaining_pre = sorted(p.name for p in backups.glob('pre-deploy-*.db'))
+        self.assertEqual(len(remaining_pre), 10)
+        self.assertTrue(manual.exists())
 
     def test_port_check_can_be_skipped(self):
         sock = socket.socket()

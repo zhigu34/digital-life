@@ -61,24 +61,20 @@ def _send(method: str, url: str, *, transport: httpx.BaseTransport | None = None
         return getattr(client, method)(url, **kwargs)
 
 
-def _is_unreachable(error: Exception) -> bool:
-    text = str(error).lower()
-    return "network is unreachable" in text or "address family not supported" in text
-
-
 def _send_resilient(method: str, url: str, **kwargs):
-    """Request with an IPv4-only retry.
+    """Request with one IPv4-only retry.
 
     Docker networks usually have no IPv6 route, while providers like TMDB
     publish AAAA records; the first connect attempt then fails with
-    ENETUNREACH/EAFNOSUPPORT even though IPv4 works fine.
+    ENETUNREACH or EAI_ADDRFAMILY ("address family for hostname not
+    supported") even though IPv4 works fine. Rather than matching the many
+    libc-specific message variants, any connect-phase failure gets a single
+    IPv4-only retry.
     """
     try:
         return _send(method, url, **kwargs)
     except httpx.ConnectError as error:
-        if not _is_unreachable(error):
-            raise
-        logger.info("Retrying %s over IPv4 only", url)
+        logger.info("Retrying %s over IPv4 only after %s", url, type(error).__name__)
         return _send(method, url, transport=httpx.HTTPTransport(local_address="0.0.0.0"), **kwargs)
 
 

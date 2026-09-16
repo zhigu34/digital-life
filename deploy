@@ -248,14 +248,21 @@ if [ "${#SERVICES[@]}" -gt 0 ]; then
   fi
 fi
 if [ "$BACKEND" = 1 ] && [ "$NO_BUILD" = 0 ]; then
-  info '暂停后端写入，准备数据库迁移'
-  "${COMPOSE[@]}" stop backend >> logs/deploy.log 2>&1 || fail '无法停止后端'
-  if [ -f data/digital-life.db ]; then
-    BACKUP_FILE="/backups/pre-deploy-$(date -u +%Y%m%dT%H%M%SZ)-$$.db"
-    "${COMPOSE[@]}" run --rm --no-deps -T backend python -m app.cli backup --output "$BACKUP_FILE" >> logs/deploy.log 2>&1 || fail '备份失败，未执行迁移'
-    info "迁移前备份: $BACKUP_FILE"
+  # A schema that is already current needs neither the write pause nor a
+  # pre-migration backup; any nonzero check result (pending or failed check)
+  # conservatively takes the full backup path.
+  if "${COMPOSE[@]}" run --rm --no-deps -T backend python -m app.cli pending-migration >> logs/deploy.log 2>&1; then
+    info '数据库结构已是最新，跳过停服备份与迁移'
+  else
+    info '检测到待执行迁移；暂停后端写入，先做一致性备份'
+    "${COMPOSE[@]}" stop backend >> logs/deploy.log 2>&1 || fail '无法停止后端'
+    if [ -f data/digital-life.db ]; then
+      BACKUP_FILE="/backups/pre-deploy-$(date -u +%Y%m%dT%H%M%SZ)-$$.db"
+      "${COMPOSE[@]}" run --rm --no-deps -T backend python -m app.cli backup --output "$BACKUP_FILE" >> logs/deploy.log 2>&1 || fail '备份失败，未执行迁移'
+      info "迁移前备份: $BACKUP_FILE"
+    fi
+    "${COMPOSE[@]}" run --rm --no-deps -T backend python -m app.cli migrate >> logs/deploy.log 2>&1 || fail '迁移失败，后端保持停止，请检查日志'
   fi
-  "${COMPOSE[@]}" run --rm --no-deps -T backend python -m app.cli migrate >> logs/deploy.log 2>&1 || fail '迁移失败，后端保持停止，请检查日志'
 fi
 # Compose reconciles both services but does not recreate unchanged healthy containers.
 # This also recovers an unchanged service that was stopped independently.
@@ -310,6 +317,19 @@ else
   mv logs/deploy-state.tmp logs/deploy-state
 fi
 ok "部署成功: ${CURRENT_COMMIT:0:12}"
+# Prune old automatic pre-deploy backups beyond the newest N; manual backups
+# are never touched, and a failed deploy never reaches this point.
+KEEP_PREDEPLOY="${DEPLOY_KEEP_PREDEPLOY_BACKUPS:-10}"
+if [ -d backups ]; then
+  shopt -s nullglob
+  pre_files=(backups/pre-deploy-*.db)
+  shopt -u nullglob
+  if [ "${#pre_files[@]}" -gt "$KEEP_PREDEPLOY" ]; then
+    ls -1t "${pre_files[@]}" | tail -n +"$((KEEP_PREDEPLOY + 1))" | while IFS= read -r old_backup; do
+      rm -f -- "$old_backup"
+    done
+  fi
+fi
 "${COMPOSE[@]}" ps
 printf '\n'
 printf 'Digital Life Web: http://127.0.0.1:%s\n' "$WEB_PORT"

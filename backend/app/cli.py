@@ -12,7 +12,7 @@ from sqlalchemy import UniqueConstraint, select
 from sqlalchemy.exc import IntegrityError
 
 from app.config import Settings
-from app.database import make_engine, migrate, session_factory
+from app.database import make_engine, migrate, migration_pending, session_factory
 from app.models import Base, User
 from app.schemas import UserCreate
 from app.security import hash_password
@@ -178,6 +178,7 @@ def main():
     backup_cmd.add_argument("--output", required=True)
     restore_cmd = commands.add_parser("restore", help="Restore a backup, with backend stopped")
     restore_cmd.add_argument("--input", required=True)
+    commands.add_parser("pending-migration", help="Exit 1 when database migrations are pending")
     args = parser.parse_args()
     try:
         settings = Settings.from_env()
@@ -190,6 +191,11 @@ def main():
             create_admin(settings, args.username, password)
         elif args.command == "backup":
             backup(settings, args.output)
+        elif args.command == "pending-migration":
+            if migration_pending(settings):
+                print("pending")
+                parser.exit(1)
+            print("up-to-date")
         else:
             restore(settings, args.input)
     except ValidationError:
