@@ -68,6 +68,22 @@ export interface MaintenanceLog {
 }
 export type Collection = "tasks" | "expenses" | "shows" | "milestones";
 export type RecordItem = Task | Expense | Show | Milestone;
+export interface StatsMonth {
+  month: string;
+  expense_due: Record<string, number>;
+  maintenance_cost: Record<string, number>;
+}
+export interface ShowsSummary {
+  watching: number;
+  planned: number;
+  completed: number;
+  paused: number;
+  episodes_watched: number;
+}
+export interface Stats {
+  months: StatsMonth[];
+  shows: ShowsSummary;
+}
 export interface Records {
   tasks: Task[];
   expenses: Expense[];

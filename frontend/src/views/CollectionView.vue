@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import type { Collection, Records, RecordItem, Task } from "../types";
+import type { Collection, Records, RecordItem, Task, Stats } from "../types";
 import {
   labels,
   money,
@@ -8,11 +8,14 @@ import {
   countdown,
   daysBetween,
 } from "../domain";
+import { metricCurrencies, monthTrend, trendTotal } from "../stats";
 import AppIcon from "../components/AppIcon.vue";
 import EmptyState from "../components/EmptyState.vue";
+import BarChart from "../components/BarChart.vue";
 const props = defineProps<{
   collection: Collection;
   records: Records;
+  stats: Stats | null;
   today: string;
   busy: boolean;
 }>();
@@ -70,6 +73,24 @@ const filtered = computed(() =>
 const summaries = computed(() =>
   expenseSummary(props.records.expenses, props.today),
 );
+const expenseCurrencies = computed(() =>
+  props.stats ? metricCurrencies(props.stats.months, "expense_due") : [],
+);
+const statsCurrency = ref("");
+const activeCurrency = computed(
+  () => statsCurrency.value || expenseCurrencies.value[0] || "CNY",
+);
+const expenseTrend = computed(() =>
+  props.stats && props.collection === "expenses" && expenseCurrencies.value.length
+    ? monthTrend(
+        props.stats,
+        "expense_due",
+        activeCurrency.value,
+        (value, currency) => money(value, currency),
+      )
+    : [],
+);
+const expenseTrendTotal = computed(() => trendTotal(expenseTrend.value));
 const tabs = computed(() =>
   props.collection === "tasks"
     ? ["all", "todo", "doing", "waiting", "done"]
@@ -121,6 +142,64 @@ const dueLabel = (date: string) => {
       <p class="summary-note">
         月均成本将每期金额按月摊分；本月应付按费用周期推算，分别统计各币种。确认已付只推进下次日期，不记录银行交易。
       </p>
+    </section>
+    <section
+      v-if="collection === 'expenses' && expenseTrend.length"
+      class="panel trend-panel"
+      aria-label="近十二个月应付趋势"
+    >
+      <header class="panel-heading">
+        <div>
+          <span class="section-index">TREND</span>
+          <h2>近 12 个月应付</h2>
+        </div>
+        <div class="trend-head-right">
+          <strong class="trend-total"
+            >{{ money(expenseTrendTotal, activeCurrency) }}<small>合计</small></strong
+          >
+          <div v-if="expenseCurrencies.length > 1" class="tabs" aria-label="币种筛选">
+            <button
+              v-for="currency in expenseCurrencies"
+              :key="currency"
+              :class="{ active: currency === activeCurrency }"
+              @click="statsCurrency = currency"
+            >
+              {{ currency }}
+            </button>
+          </div>
+        </div>
+      </header>
+      <div class="trend-body">
+        <BarChart
+          :points="expenseTrend"
+          chart-title="近十二个月每月应付金额柱状图"
+        />
+        <p class="summary-note">
+          按费用周期从下次应付日外推各月应付，未确认付款也会计入；停用的费用不计。
+        </p>
+      </div>
+    </section>
+    <section
+      v-if="collection === 'shows' && stats && records.shows.length"
+      class="shows-stats"
+      aria-label="追剧统计"
+    >
+      <div
+        v-for="[value, label] in [
+          [stats.shows.watching, '在看'],
+          [stats.shows.planned, '想看'],
+          [stats.shows.completed, '已看完'],
+          [stats.shows.paused, '暂搁'],
+        ]"
+        :key="label"
+        class="summary-card"
+      >
+        <span>{{ label }}</span><strong>{{ value }}</strong>
+      </div>
+      <div class="summary-card">
+        <span>累计看完</span
+        ><strong>{{ stats.shows.episodes_watched }}<small>集</small></strong>
+      </div>
     </section>
     <div class="collection-toolbar">
       <div v-if="tabs.length" class="tabs" aria-label="状态筛选">

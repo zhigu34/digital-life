@@ -3,13 +3,16 @@ import { computed, onUnmounted, reactive, ref } from "vue";
 import { api, ApiError } from "../api";
 import { money } from "../domain";
 import { maintenanceTiming, nextMaintenanceDate } from "../maintenance";
-import type { Maintenance, MaintenanceLog } from "../types";
+import { metricCurrencies, monthTrend, trendTotal } from "../stats";
+import type { Maintenance, MaintenanceLog, Stats } from "../types";
 import AppIcon from "../components/AppIcon.vue";
 import EmptyState from "../components/EmptyState.vue";
 import ModalDialog from "../components/ModalDialog.vue";
+import BarChart from "../components/BarChart.vue";
 
 const props = defineProps<{
   items: Maintenance[];
+  stats: Stats | null;
   today: string;
   parentBusy: boolean;
 }>();
@@ -72,6 +75,24 @@ const reminderCount = computed(
     props.items.filter((item) => maintenanceTiming(item, props.today).remind)
       .length,
 );
+const costCurrencies = computed(() =>
+  props.stats ? metricCurrencies(props.stats.months, "maintenance_cost") : [],
+);
+const costCurrency = ref("");
+const activeCostCurrency = computed(
+  () => costCurrency.value || costCurrencies.value[0] || "CNY",
+);
+const costTrend = computed(() =>
+  props.stats && costCurrencies.value.length
+    ? monthTrend(
+        props.stats,
+        "maintenance_cost",
+        activeCostCurrency.value,
+        (value, currency) => money(value, currency),
+      )
+    : [],
+);
+const costTrendTotal = computed(() => trendTotal(costTrend.value));
 const preview = computed(() => {
   try {
     return nextMaintenanceDate(
@@ -284,6 +305,47 @@ function remove(item: Maintenance) {
         <p>每次实际完成后，重新计算下一次到期。费用和细节会留在完成历史里。</p>
       </div>
     </div>
+    <section
+      v-if="costTrend.length"
+      class="panel trend-panel"
+      aria-label="近十二个月维护费用"
+    >
+      <header class="panel-heading">
+        <div>
+          <span class="section-index">COSTS</span>
+          <h2>近 12 个月维护费用</h2>
+        </div>
+        <div class="trend-head-right">
+          <strong class="trend-total"
+            >{{ money(costTrendTotal, activeCostCurrency)
+            }}<small>合计</small></strong
+          >
+          <div
+            v-if="costCurrencies.length > 1"
+            class="tabs"
+            aria-label="币种筛选"
+          >
+            <button
+              v-for="currency in costCurrencies"
+              :key="currency"
+              :class="{ active: currency === activeCostCurrency }"
+              @click="costCurrency = currency"
+            >
+              {{ currency }}
+            </button>
+          </div>
+        </div>
+      </header>
+      <div class="trend-body">
+        <BarChart
+          :points="costTrend"
+          chart-title="近十二个月每月维护费用柱状图"
+        />
+        <p class="summary-note">
+          汇总完成历史中记录的费用，按完成日期所在月份统计；未填费用的记录不计。
+        </p>
+      </div>
+    </section>
     <div class="collection-toolbar">
       <div class="tabs" aria-label="维护状态筛选">
         <button

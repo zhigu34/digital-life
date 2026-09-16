@@ -42,7 +42,10 @@ if '--verify-persistence' in sys.argv:
     history = request(f"/api/maintenance/{maintenance['id']}/history")
     assert len(history) == 2
     assert history[0]['cost_cents'] == 12950
-    print('Account, task, recurring maintenance and completion history survived container recreation.')
+    stats = request('/api/stats?end_month=2000-04')
+    march = next(month for month in stats['months'] if month['month'] == '2000-03')
+    assert march['maintenance_cost'] == {'CNY': 12950}, march
+    print('Account, task, maintenance history and stats survived container recreation.')
 else:
     task = request('/api/tasks', {'title': 'CI persistence sentinel'}, login['csrf_token'])
     assert task['title'] == 'CI persistence sentinel'
@@ -55,6 +58,12 @@ else:
         'completed_on': '2000-03-31', 'cost_cents': 12950, 'notes': 'CI replacement',
     }, login['csrf_token'])
     assert completed['next_due'] == '2000-04-30'
+    stats = request('/api/stats?end_month=2000-04')
+    assert len(stats['months']) == 12
+    march = next(month for month in stats['months'] if month['month'] == '2000-03')
+    assert march['maintenance_cost'] == {'CNY': 12950}, march
+    assert all(month['expense_due'] == {} for month in stats['months'])
+    assert stats['shows']['episodes_watched'] >= 0
     exported = request('/api/export')
     assert any(t['id'] == task['id'] for t in exported['tasks'])
     assert any(item['id'] == maintenance['id'] for item in exported['maintenance'])

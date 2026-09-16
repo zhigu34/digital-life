@@ -9,6 +9,7 @@ import type {
   Page,
   RecordItem,
   Maintenance,
+  Stats,
 } from "./types";
 import AppIcon from "./components/AppIcon.vue";
 import RecordForm from "./components/RecordForm.vue";
@@ -33,6 +34,7 @@ const records = reactive<Records>({
   milestones: [],
   maintenance: [],
 });
+const stats = ref<Stats | null>(null);
 const page = ref<Page>("today"),
   editing = ref<{ collection: Collection; item?: RecordItem } | null>(null),
   formError = ref("");
@@ -83,6 +85,7 @@ function clear() {
     milestones: [],
     maintenance: [],
   });
+  stats.value = null;
   editing.value = null;
   page.value = "today";
   error.value = "";
@@ -107,16 +110,16 @@ async function load() {
   loading.value = true;
   error.value = "";
   try {
-    const [tasks, expenses, shows, milestones, maintenance] = await Promise.all(
-      [
+    const [tasks, expenses, shows, milestones, maintenance, statsData] =
+      await Promise.all([
         api<Records["tasks"]>("/tasks"),
         api<Records["expenses"]>("/expenses"),
         api<Records["shows"]>("/shows"),
         api<Records["milestones"]>("/milestones"),
         api<Records["maintenance"]>("/maintenance"),
-      ],
-    );
-    if (version === accountVersion)
+        api<Stats>(`/stats?end_month=${today.value.slice(0, 7)}`),
+      ]);
+    if (version === accountVersion) {
       Object.assign(records, {
         tasks,
         expenses,
@@ -124,6 +127,8 @@ async function load() {
         milestones,
         maintenance,
       });
+      stats.value = statsData;
+    }
   } catch (e) {
     if (version === accountVersion) handleError(e);
   } finally {
@@ -452,6 +457,7 @@ onUnmounted(() => {
         :key="page"
         :collection="page as Collection"
         :records="records"
+        :stats="stats"
         :today="today"
         :busy="busy"
         @create="open(page as Collection)"
@@ -462,6 +468,7 @@ onUnmounted(() => {
         v-else-if="page === 'maintenance'"
         :key="user.id"
         :items="records.maintenance"
+        :stats="stats"
         :today="today"
         :parent-busy="busy"
         @refresh="load"

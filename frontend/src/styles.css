@@ -1691,6 +1691,87 @@ input:disabled {
   color: var(--muted);
   font-size: 11px;
 }
+/* Stats */
+.trend-panel {
+  margin-bottom: 24px;
+}
+.trend-head-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.trend-total {
+  font-size: 15px;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+}
+.trend-total small {
+  font-size: 9px;
+  color: var(--muted);
+  font-weight: 400;
+}
+.trend-body {
+  padding: 4px 23px 20px;
+}
+.bar-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 132px;
+  padding-top: 8px;
+}
+.bar-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+}
+.bar-track {
+  flex: 1;
+  width: 100%;
+  max-width: 34px;
+  display: flex;
+  align-items: flex-end;
+  background: var(--soft);
+  border-radius: 4px 4px 0 0;
+  overflow: hidden;
+}
+.bar-fill {
+  display: block;
+  width: 100%;
+  background: linear-gradient(180deg, #6b9677, var(--green));
+  border-radius: 4px 4px 0 0;
+  min-height: 0;
+  transition: height 0.3s ease;
+}
+.bar-fill.zero {
+  min-height: 2px;
+  background: #d6ddce;
+}
+.bar-label {
+  font-size: 8px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.shows-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin: 22px 0;
+}
+.shows-stats .summary-card strong {
+  font-size: 20px;
+}
+.shows-stats .summary-card strong small {
+  font-size: 10px;
+  margin-left: 3px;
+}
 [data-theme="dark"] {
   --bg: #18231e;
   --surface: #202c25;
@@ -1759,6 +1840,15 @@ input:disabled {
 }
 [data-theme="dark"] .cal-chip.overdue {
   color: #e08b70;
+}
+[data-theme="dark"] .bar-track {
+  background: #26332a;
+}
+[data-theme="dark"] .bar-fill {
+  background: linear-gradient(180deg, #719e7a, #4f7a58);
+}
+[data-theme="dark"] .bar-fill.zero {
+  background: #3a493a;
 }
 [data-theme="dark"] .mini-symbol.sky {
   color: #8fb0d8;
@@ -2795,5 +2885,34 @@ input:disabled {
   }
   .calendar-day-empty {
     padding: 20px 16px;
+  }
+}
+@media (max-width: 700px) {
+  .trend-panel {
+    margin-bottom: 16px;
+  }
+  .trend-body {
+    padding: 2px 14px 15px;
+  }
+  .bar-chart {
+    height: 104px;
+    gap: 2px;
+  }
+  .bar-label {
+    font-size: 7px;
+  }
+  .trend-head-right {
+    gap: 8px;
+  }
+  .trend-total {
+    font-size: 13px;
+  }
+  .shows-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 7px;
+    margin: 16px 0;
+  }
+  .shows-stats .summary-card strong {
+    font-size: 16px;
   }
 }
