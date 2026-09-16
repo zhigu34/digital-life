@@ -76,6 +76,13 @@ class Milestone(Owned, Base):
     notes: Mapped[str] = mapped_column(Text, default="")
 
 
+class Note(Owned, Base):
+    __tablename__ = "notes"
+    content: Mapped[str] = mapped_column(Text)
+    entry_date: Mapped[date] = mapped_column(Date)
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+
+
 class Maintenance(Owned, Base):
     __tablename__ = "maintenance"
     title: Mapped[str] = mapped_column(String(120))

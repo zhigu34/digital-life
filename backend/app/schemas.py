@@ -184,6 +184,16 @@ class MilestoneView(MilestonePayload):
     id: int
 
 
+class NotePayload(Payload):
+    content: Annotated[str, Field(min_length=1, max_length=4000)]
+    entry_date: ISODate
+
+
+class NoteView(NotePayload):
+    id: int
+    created_at: datetime
+
+
 def patch_schema(name, schema):
     # Presence and extra keys are validated here. Validate the merged complete
     # payload again in the route, so null and cross-field constraints stay intact.
@@ -202,3 +212,4 @@ TaskPatch = patch_schema("TaskPatch", TaskPayload)
 ExpensePatch = patch_schema("ExpensePatch", ExpensePayload)
 ShowPatch = patch_schema("ShowPatch", ShowPayload)
 MilestonePatch = patch_schema("MilestonePatch", MilestonePayload)
+NotePatch = patch_schema("NotePatch", NotePayload)

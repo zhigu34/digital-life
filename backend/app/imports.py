@@ -11,10 +11,11 @@ from app.auth import Identity, authenticated
 from app.database import get_db
 from app.maintenance import calculated_due
 from app.maintenance_schemas import MaintenanceCreate, MaintenanceLogView
-from app.models import Expense, Maintenance, MaintenanceLog, Milestone, Show, Task
+from app.models import Expense, Maintenance, MaintenanceLog, Milestone, Note, Show, Task
 from app.schemas import (
     ExpensePayload,
     MilestonePayload,
+    NotePayload,
     ShowPayload,
     TaskPayload,
 )
@@ -46,6 +47,11 @@ class MilestoneRow(MilestonePayload):
     model_config = IGNORE_EXTRA
 
 
+class NoteRow(NotePayload):
+    model_config = IGNORE_EXTRA
+    created_at: datetime | None = None
+
+
 class MaintenanceRow(MaintenanceCreate):
     model_config = IGNORE_EXTRA
 
@@ -59,12 +65,14 @@ COLLECTION_ROWS = {
     "expenses": ExpenseRow,
     "shows": ShowRow,
     "milestones": MilestoneRow,
+    "notes": NoteRow,
 }
 MODELS = {
     "tasks": Task,
     "expenses": Expense,
     "shows": Show,
     "milestones": Milestone,
+    "notes": Note,
 }
 
 
@@ -133,14 +141,14 @@ def import_data(
             )
         )
     )
-    for model in (Maintenance, Task, Expense, Show, Milestone):
+    for model in (Maintenance, Task, Expense, Show, Milestone, Note):
         db.execute(delete(model).where(model.user_id == user_id))
 
     for key, rows in collections.items():
         model = MODELS[key]
         for row in rows:
             values = row.model_dump()
-            if model is Task:
+            if model in (Task, Note):
                 values["created_at"] = row.created_at or datetime.now(UTC).replace(tzinfo=None)
             db.add(model(user_id=user_id, **values))
 
@@ -179,6 +187,7 @@ def import_data(
             "expenses": len(collections["expenses"]),
             "shows": len(collections["shows"]),
             "milestones": len(collections["milestones"]),
+            "notes": len(collections["notes"]),
             "maintenance": len(maintenance_rows),
             "maintenance_logs": imported_logs,
         }

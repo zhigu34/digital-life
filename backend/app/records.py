@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.auth import Identity, authenticated, validated_patch
 from app.database import get_db
 from app.maintenance_schemas import MaintenanceLogView, MaintenanceView
-from app.models import Expense, Maintenance, MaintenanceLog, Milestone, Show, Task
+from app.models import Expense, Maintenance, MaintenanceLog, Milestone, Note, Show, Task
 from app.schemas import (
     MAX_EPISODES,
     ExpensePatch,
@@ -17,6 +17,9 @@ from app.schemas import (
     MilestonePatch,
     MilestonePayload,
     MilestoneView,
+    NotePatch,
+    NotePayload,
+    NoteView,
     ResourceId,
     ShowPatch,
     ShowPayload,
@@ -33,6 +36,7 @@ COLLECTIONS = {
     "expenses": (Expense, ExpensePayload, ExpensePatch, ExpenseView),
     "shows": (Show, ShowPayload, ShowPatch, ShowView),
     "milestones": (Milestone, MilestonePayload, MilestonePatch, MilestoneView),
+    "notes": (Note, NotePayload, NotePatch, NoteView),
 }
 
 
@@ -62,7 +66,7 @@ def register_collection(name, model, create_schema, patch_schema, view):
         db: Session = Depends(get_db),
     ):
         values = payload.model_dump()
-        if model is Task:
+        if model in (Task, Note):
             values["created_at"] = datetime.now(UTC).replace(tzinfo=None)
         item = model(user_id=identity.user.id, **values)
         db.add(item)

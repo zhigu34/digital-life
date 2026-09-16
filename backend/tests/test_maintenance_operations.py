@@ -15,7 +15,7 @@ from app.models import Task, User
 from app.security import hash_password
 
 
-def test_migrate_0001_to_0002_keeps_old_accounts_and_records(tmp_path):
+def test_migrate_0001_database_keeps_old_accounts_and_records(tmp_path):
     from datetime import datetime
 
     settings = Settings(tmp_path / "legacy")
@@ -50,9 +50,9 @@ def test_migrate_0001_to_0002_keeps_old_accounts_and_records(tmp_path):
         assert client.get("/api/maintenance").json() == []
         create_item(client, csrf)
     with sqlite3.connect(settings.database_path) as db:
-        assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0002",)
+        assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0003",)
         assert db.execute("PRAGMA foreign_key_check").fetchall() == []
-    # Old snapshots stay usable with their matching version, not silently restored into v2.
+    # Old snapshots stay usable with their matching version, not silently restored into v3.
     with pytest.raises(ValueError):
         restore(Settings(tmp_path / "wrong-version"), old_backup)
 

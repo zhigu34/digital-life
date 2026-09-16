@@ -27,6 +27,7 @@ import {
   LoaderCircle,
   Menu,
   CalendarDays,
+  NotebookPen,
   Sparkles,
   MoreHorizontal,
 } from "lucide-vue-next";
@@ -58,6 +59,7 @@ const icons = {
   loading: LoaderCircle,
   menu: Menu,
   calendar: CalendarDays,
+  notes: NotebookPen,
   sparkles: Sparkles,
   more: MoreHorizontal,
 };

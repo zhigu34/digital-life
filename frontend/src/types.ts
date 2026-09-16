@@ -57,6 +57,12 @@ export interface Maintenance {
   last_completed: string;
   next_due: string;
 }
+export interface Note {
+  id: number;
+  content: string;
+  entry_date: string;
+  created_at: string;
+}
 export interface MaintenanceLog {
   id: number;
   maintenance_id: number;
@@ -90,11 +96,13 @@ export interface Records {
   shows: Show[];
   milestones: Milestone[];
   maintenance: Maintenance[];
+  notes: Note[];
 }
 export type Page =
   | "today"
   | "calendar"
   | Collection
   | "maintenance"
+  | "notes"
   | "profile"
   | "admin";

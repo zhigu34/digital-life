@@ -64,6 +64,7 @@ def test_import_replaces_account_data_from_export(accounts):
         "expenses": 1,
         "shows": 1,
         "milestones": 1,
+        "notes": 0,
         "maintenance": 1,
         "maintenance_logs": 2,
     }

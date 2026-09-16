@@ -20,6 +20,7 @@ import CollectionView from "./views/CollectionView.vue";
 import ProfileView from "./views/ProfileView.vue";
 import AdminView from "./views/AdminView.vue";
 import MaintenanceView from "./views/MaintenanceView.vue";
+import NotesView from "./views/NotesView.vue";
 const user = ref<User | null>(null),
   initializing = ref(true),
   loading = ref(false),
@@ -33,6 +34,7 @@ const records = reactive<Records>({
   shows: [],
   milestones: [],
   maintenance: [],
+  notes: [],
 });
 const stats = ref<Stats | null>(null);
 const page = ref<Page>("today"),
@@ -50,6 +52,7 @@ const navigation: [Page, string, string][] = [
   ["shows", "追剧片单", ""],
   ["milestones", "重要日子", ""],
   ["maintenance", "周期维护", ""],
+  ["notes", "文字随记", ""],
 ];
 const pageLabels: Record<Page, string> = {
   today: "今日概览",
@@ -59,6 +62,7 @@ const pageLabels: Record<Page, string> = {
   shows: "追剧片单",
   milestones: "重要日子",
   maintenance: "周期维护",
+  notes: "文字随记",
   profile: "个人设置",
   admin: "账户管理",
 };
@@ -70,6 +74,7 @@ const mobileNavLabels: Record<string, string> = {
   shows: "追剧",
   milestones: "日子",
   maintenance: "维护",
+  notes: "随记",
 };
 let noticeTimer: ReturnType<typeof setTimeout>,
   clockTimer: ReturnType<typeof setInterval>;
@@ -84,6 +89,7 @@ function clear() {
     shows: [],
     milestones: [],
     maintenance: [],
+    notes: [],
   });
   stats.value = null;
   editing.value = null;
@@ -110,13 +116,14 @@ async function load() {
   loading.value = true;
   error.value = "";
   try {
-    const [tasks, expenses, shows, milestones, maintenance, statsData] =
+    const [tasks, expenses, shows, milestones, maintenance, notes, statsData] =
       await Promise.all([
         api<Records["tasks"]>("/tasks"),
         api<Records["expenses"]>("/expenses"),
         api<Records["shows"]>("/shows"),
         api<Records["milestones"]>("/milestones"),
         api<Records["maintenance"]>("/maintenance"),
+        api<Records["notes"]>("/notes"),
         api<Stats>(`/stats?end_month=${today.value.slice(0, 7)}`),
       ]);
     if (version === accountVersion) {
@@ -126,6 +133,7 @@ async function load() {
         shows,
         milestones,
         maintenance,
+        notes,
       });
       stats.value = statsData;
     }
@@ -492,6 +500,15 @@ onUnmounted(() => {
         @error="handleError"
         @notice="notify"
         @remove="removeMaintenance"
+      /><NotesView
+        v-else-if="page === 'notes'"
+        :key="user.id"
+        :items="records.notes"
+        :today="today"
+        :parent-busy="busy"
+        @refresh="load"
+        @error="handleError"
+        @notice="notify"
       /><ProfileView
         v-else-if="page === 'profile'"
         :user="user"
