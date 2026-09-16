@@ -18,6 +18,7 @@ import LoginView from "./views/LoginView.vue";
 import TodayView from "./views/TodayView.vue";
 import CalendarView from "./views/CalendarView.vue";
 import CollectionView from "./views/CollectionView.vue";
+import ShowsView from "./views/ShowsView.vue";
 import ProfileView from "./views/ProfileView.vue";
 import AdminView from "./views/AdminView.vue";
 import MaintenanceView from "./views/MaintenanceView.vue";
@@ -542,8 +543,16 @@ onUnmounted(() => {
         :records="records"
         :today="today"
         @navigate="navigate"
+      /><ShowsView
+        v-else-if="page === 'shows'"
+        :shows="records.shows"
+        :stats="stats"
+        :busy="busy"
+        @create="open('shows')"
+        @edit="(item) => open('shows', item)"
+        @action="(id, kind) => action('shows', id, kind)"
       /><CollectionView
-        v-else-if="['tasks', 'expenses', 'shows', 'milestones'].includes(page)"
+        v-else-if="['tasks', 'expenses', 'milestones'].includes(page)"
         :key="page"
         :collection="page as Collection"
         :records="records"
