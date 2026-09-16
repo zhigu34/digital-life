@@ -184,24 +184,15 @@ def test_concurrent_progression_is_not_lost(accounts):
 
     app, admin, headers, alice, ah, bob, bh = accounts
     expense = alice.post(
-        "/api/expenses", headers=ah, json={"title": "并发", "amount_cents": 1, "next_due": "2027-01-31"}
+        "/api/expenses",
+        headers=ah,
+        json={"title": "月末", "amount_cents": 1, "next_due": "2027-01-31"},
     ).json()
     path = f"/api/expenses/{expense['id']}"
-
-    def pay(_):
-        with app.state.session_factory() as db:
-            from app.models import Expense
-
-            item = db.get(Expense, expense["id"])
-            from app.records import advance_expense_due
-
-            advance_expense_due(item)
-            db.commit()
-
-    with __import__("concurrent.futures").futures.ThreadPoolExecutor(max_workers=2) as pool:
-        list(pool.map(pay, range(2)))
-    latest = alice.get(path).json()
-    assert latest["next_due"] in {"2027-02-28", "2027-03-31"}
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        responses = list(pool.map(lambda _: alice.post(path + "/pay", headers=ah), range(2)))
+    assert all(response.status_code == 200 for response in responses)
+    assert alice.get(path).json()["next_due"] == "2027-03-31"
 
 
 @pytest.mark.parametrize(
