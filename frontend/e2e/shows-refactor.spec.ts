@@ -94,17 +94,17 @@ test('show editor exposes richer metadata and adapts movie fields', async ({ pag
   await dialog.getByLabel('名称', { exact: true }).fill('带资料的电影')
   await dialog.getByRole('combobox', { name: '类型', exact: true }).selectOption('movie')
 
-  await expect(dialog.getByLabel('上映年份', { exact: true })).toBeVisible()
-  await expect(dialog.getByLabel('引用链接', { exact: true })).toBeVisible()
+  await expect(dialog.getByLabel(/^上映年份/)).toBeVisible()
+  await expect(dialog.getByLabel(/^引用链接/)).toBeVisible()
   await expect(dialog.getByLabel('已看集数', { exact: true })).toHaveCount(0)
   await expect(dialog.getByLabel('总集数', { exact: true })).toHaveCount(0)
   await expect(dialog.getByLabel('更新日', { exact: true })).toHaveCount(0)
   await expect(dialog.getByLabel('季数', { exact: true })).toHaveCount(0)
 
-  await dialog.getByLabel('上映年份', { exact: true }).fill('2024')
-  await dialog.getByLabel('引用链接', { exact: true }).fill('https://www.themoviedb.org/movie/42')
+  await dialog.getByLabel(/^上映年份/).fill('2024')
+  await dialog.getByLabel(/^引用链接/).fill('https://www.themoviedb.org/movie/42')
   await dialog.getByRole('combobox', { name: '状态', exact: true }).selectOption('completed')
-  await expect(dialog.getByLabel('看完日期', { exact: true })).not.toHaveValue('')
+  await expect(dialog.getByLabel(/^看完日期/)).not.toHaveValue('')
   await dialog.getByRole('button', { name: '保存记录', exact: true }).click()
   await expect(dialog).toHaveCount(0)
 
