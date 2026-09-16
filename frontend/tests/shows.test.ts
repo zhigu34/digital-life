@@ -4,6 +4,7 @@ import {
   filterShows,
   normalizeShowPayload,
   showAdvanceDisabled,
+  showMetadataPatch,
   showProgressPercent,
 } from "../src/shows";
 
@@ -105,5 +106,30 @@ describe("shows helpers", () => {
 
     expect(result.data).toBeNull();
     expect(result.error).toBe("已看进度不能大于总集数");
+  });
+
+  it("maps a metadata candidate to the existing show form fields", () => {
+    expect(
+      showMetadataPatch({
+        source: "tmdb",
+        source_id: 1399,
+        title: "权力的游戏",
+        original_title: "Game of Thrones",
+        air_date: "2011-04-17",
+        total_episodes: 73,
+        platform: "TV",
+        image: "https://image.tmdb.org/t/p/w500/example.jpg",
+        seasons: 8,
+        air_status: "ended",
+      }),
+    ).toEqual({
+      title: "权力的游戏",
+      total: 73,
+      source: "tmdb",
+      source_id: 1399,
+      poster_path: "https://image.tmdb.org/t/p/w500/example.jpg",
+      seasons: 8,
+      air_status: "ended",
+    });
   });
 });
