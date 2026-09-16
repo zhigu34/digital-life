@@ -1,6 +1,6 @@
 # Digital Life 接手状态
 
-更新：2026-09-15。首版及周期维护功能均已合入 GitHub `main`，本地验证和 GitHub CI 均通过。
+更新：2026-09-16。首版及周期维护功能均已合入 GitHub `main`；deploy 脚本已参照 camera-recorder 完善，本地验证和 GitHub CI 均通过。
 
 ## 用户确认的方向
 
@@ -32,12 +32,13 @@
 - 当前本地机器没有 Docker；真实 Linux amd64 容器已在 GitHub CI 验证通过，包含首次部署、健康检查、API/导出、桌面/手机操作、容器重建后的持久化及重复部署。
 - 验证提交：`5d41173`；[GitHub Actions #34920606997](https://github.com/zhigu34/digital-life/actions/runs/34920606997) 的 backend、frontend、docker-e2e 均为 success。随后仅更新交付文档，未改应用代码。
 - 周期维护验证提交：`1e3c31b`；功能分支和 [main Actions #34981612840](https://github.com/zhigu34/digital-life/actions/runs/34981612840) 的 backend、frontend、docker-e2e 均为 success。随后仅更新交付文档，未改应用代码。
+- deploy 完善验证提交：`17afac9`；[main Actions #35043909280](https://github.com/zhigu34/digital-life/actions/runs/35043909280) 的 backend、frontend、docker-e2e 均为 success。部署脚本参照 camera-recorder 重写：彩色输出与完整 `--help`、`--no-build`、构建错误摘要、变更文件列表、成功地址输出；部署前校验基础镜像架构与拉取、Web 端口冲突、磁盘空间与目录可写；健康检查失败状态立即终止；`DEPLOY_BUILD_VERBOSE`、`DEPLOY_AUTO_PULL`、`DEPLOY_SKIP_PORT_CHECK` 环境变量。未改动 camera-recorder 项目；未自动执行 docker prune，地址池耗尽仅提示手动处理。
 
 ## 接下来
 
-1. 用户在 NAS 运行 `git pull --ff-only && ./deploy`。脚本会在 `0002` 迁移前备份旧库；尚未连接或操作用户的 NAS。
+1. 用户在 NAS 运行 `git pull --ff-only && ./deploy`（新脚本会先做端口、镜像、磁盘等部署前检查）。脚本会在 `0002` 迁移前备份旧库；尚未连接或操作用户的 NAS。
 2. 如通过域名访问，按 README 配置 HTTPS、Secure Cookie 和可信 Origin。
-3. 当前没有已知阻断周期维护功能使用的问题；后续功能继续从 `main` 创建新的 `codex/` 分支。
+3. 当前没有已知阻断功能使用的问题；后续功能继续从 `main` 创建新的 `codex/` 分支。
 
 ## 本地与 Git 状态提示
 
