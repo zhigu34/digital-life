@@ -39,14 +39,15 @@ case "$*" in
   *"build"*) [ "${FAIL_BUILD:-0}" = 0 ] || exit 9;;
   *"run "*"migrate"*) [ "${FAIL_MIGRATE:-0}" = 0 ] || exit 10;;
   *"run "*"pending-migration"*) [ "${FAKE_MIGRATION_PENDING:-1}" = 0 ] && exit 0; exit 1;;
-  *" exec "*"urllib"*) [ "${FAIL_HEALTH:-0}" = 0 ] || exit 11;;
+  *" exec "*"urllib"*) if [ -n "${FAKE_HEALTH_TRANSIENT:-}" ]; then n="$(cat "$FAKE_HEALTH_COUNT" 2>/dev/null || echo 0)"; echo "$((n + 1))" > "$FAKE_HEALTH_COUNT"; [ "$n" -ge "$FAKE_HEALTH_TRANSIENT" ] || exit 11; fi; [ "${FAIL_HEALTH:-0}" = 0 ] || exit 11;;
 esac
 exit 0
 ''')
         docker.chmod(0o755)
         self.env = {**os.environ, 'PATH': f'{self.bin}:{os.environ["PATH"]}',
                     'FAKE_LOG': str(self.root / 'docker.log'),
-                    'FAKE_STOP_FILE': str(self.root / 'stopped-backend')}
+                    'FAKE_STOP_FILE': str(self.root / 'stopped-backend'),
+                    'FAKE_HEALTH_COUNT': str(self.root / 'health-count')}
         subprocess.run(['git', 'init', '-q'], cwd=self.root, check=True)
         subprocess.run(['git', 'add', '.'], cwd=self.root, check=True)
         subprocess.run(['git', '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
@@ -167,6 +168,12 @@ exit 0
         remaining_pre = sorted(p.name for p in backups.glob('pre-deploy-*.db'))
         self.assertEqual(len(remaining_pre), 10)
         self.assertTrue(manual.exists())
+
+    def test_transient_web_gateway_errors_retry_to_success(self):
+        result = self.run_deploy(FAKE_HEALTH_TRANSIENT='2')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('Web 入口暂未就绪', result.stdout)
+        self.assertTrue((self.root / 'logs' / 'deploy-state').exists())
 
     def test_port_check_can_be_skipped(self):
         sock = socket.socket()

@@ -303,7 +303,19 @@ for service in backend frontend; do
   ok "$service healthy"
 done
 # Verify the actual Web reverse-proxy route, not only process liveness.
-"${COMPOSE[@]}" exec -T backend python -c "import urllib.request; urllib.request.urlopen('http://frontend/health', timeout=10)" >> logs/deploy.log 2>&1 || fail 'Web 入口到后端的健康检查失败'
+# nginx re-resolves the backend at most every resolver-valid seconds, so the
+# first request right after a backend-only recreation may still hit the old
+# address; retry briefly instead of failing the whole deploy.
+web_ready=0
+for attempt in 1 2 3 4 5 6 7 8 9 10; do
+  if "${COMPOSE[@]}" exec -T backend python -c "import urllib.request; urllib.request.urlopen('http://frontend/health', timeout=10)" >> logs/deploy.log 2>&1; then
+    web_ready=1
+    break
+  fi
+  [ "$attempt" -gt 1 ] || info 'Web 入口暂未就绪，等待 nginx 重新解析后端（最多约 30 秒）'
+  sleep 3
+done
+[ "$web_ready" = 1 ] || fail 'Web 入口到后端的健康检查失败'
 ok 'Web 入口与后端 API 反代正常'
 
 CURRENT_COMMIT="$(git rev-parse HEAD)"

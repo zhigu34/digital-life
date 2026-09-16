@@ -75,6 +75,11 @@ jobs:
           docker compose up -d --force-recreate --wait --wait-timeout 120
           python3 scripts/ci-smoke.py --verify-persistence
           ./deploy
+      - name: Redeploy after a backend-only change
+        run: |
+          printf '\n# ci touch\n' >> backend/app/config.py
+          ./deploy
+          curl --fail --silent http://127.0.0.1:8090/health
       - name: Diagnostics
         if: always()
         run: docker compose ps && docker compose logs --no-color --tail=150
