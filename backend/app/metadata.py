@@ -7,6 +7,7 @@ need an operator-provided DIGITAL_LIFE_TMDB_API_KEY; without it drama and film
 searches keep using Bangumi.
 """
 
+import logging
 from urllib.parse import urlparse
 
 import httpx
@@ -19,6 +20,7 @@ from app.models import Show
 from app.records import owned
 from app.schemas import ResourceId
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/shows", tags=["metadata"])
 BANGUMI_API = "https://api.bgm.tv"
 TMDB_API = "https://api.themoviedb.org/3"
@@ -43,6 +45,11 @@ TMDB_MOVIE_STATUS = {"Released": "released"}
 # outbound access; only these image hosts may be fetched.
 POSTER_HOSTS = {"image.tmdb.org", "lain.bgm.tv"}
 MAX_POSTER_BYTES = 5_000_000
+
+
+def _reason(error: Exception) -> str:
+    text = str(error).split("\n", 1)[0]
+    return f"{type(error).__name__}: {text[:180]}"
 
 
 def _client() -> httpx.Client:
@@ -162,6 +169,7 @@ def lookup_metadata(
     keyword = keyword.strip()
     if not 1 <= len(keyword) <= 80:
         raise HTTPException(422, "搜索关键词需要 1–80 个字符")
+    provider = "TMDB" if source == "tmdb" else "Bangumi"
     try:
         if source == "tmdb":
             results = search_tmdb(keyword, TMDB_KIND[media_type], settings.tmdb_api_key)
@@ -170,10 +178,13 @@ def lookup_metadata(
         return {"results": results}
     except HTTPException:
         raise
-    except Exception:
+    except Exception as error:
         # Any outbound failure (DNS, proxy, TLS, upstream status) is simply an
-        # unavailable optional service; it must never surface as a 500.
-        raise HTTPException(502, "暂时无法连接信息源（Bangumi/TMDB），请稍后再试") from None
+        # unavailable optional service; it must never surface as a 500. The
+        # owner-facing detail carries the concrete cause so connectivity can be
+        # diagnosed from the form itself; the full traceback goes to the log.
+        logger.exception("Metadata lookup via %s failed", provider)
+        raise HTTPException(502, f"暂时无法连接信息源（{provider}）：{_reason(error)}") from error
 
 
 def fetch_image(url: str) -> tuple[bytes, str]:
@@ -216,10 +227,12 @@ def show_poster(
     if not cached.is_file():
         try:
             content, content_type = fetch_image(show.poster_path)
-        except ValueError:
-            raise HTTPException(502, "封面文件无效") from None
-        except Exception:
-            raise HTTPException(502, "暂时无法获取封面，请稍后再试") from None
+        except ValueError as error:
+            logger.warning("Poster rejected: %s", error)
+            raise HTTPException(502, f"封面文件无效：{error}") from None
+        except Exception as error:
+            logger.exception("Poster download failed for show %s", show.id)
+            raise HTTPException(502, f"暂时无法获取封面：{_reason(error)}") from error
         cache_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         staged = cache_dir / f".{show.id}.tmp"
         staged.write_bytes(content)

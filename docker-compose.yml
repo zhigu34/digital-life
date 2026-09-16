@@ -12,6 +12,10 @@ services:
       DIGITAL_LIFE_TRUSTED_ORIGINS: ${DIGITAL_LIFE_TRUSTED_ORIGINS:-}
       DIGITAL_LIFE_DISABLE_METADATA: ${DIGITAL_LIFE_DISABLE_METADATA:-false}
       DIGITAL_LIFE_TMDB_API_KEY: ${DIGITAL_LIFE_TMDB_API_KEY:-}
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      ALL_PROXY: ${ALL_PROXY:-}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1}
       TZ: ${TZ:-Asia/Shanghai}
     volumes:
       - ./data:/data

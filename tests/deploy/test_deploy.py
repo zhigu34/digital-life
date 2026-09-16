@@ -162,6 +162,10 @@ class ComposeEnvironmentTest(unittest.TestCase):
             'DIGITAL_LIFE_TRUSTED_ORIGINS',
             'DIGITAL_LIFE_DISABLE_METADATA',
             'DIGITAL_LIFE_TMDB_API_KEY',
+            'HTTP_PROXY',
+            'HTTPS_PROXY',
+            'ALL_PROXY',
+            'NO_PROXY',
             'TZ',
         ):
             self.assertIn(var, backend_section, f'{var} missing from backend environment')
