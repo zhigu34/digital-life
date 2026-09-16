@@ -72,8 +72,12 @@ def user_today(timezone: str, now: datetime | None = None) -> date:
     return instant.astimezone(zone).date()
 
 
-def set_show_completion_date(values, timezone: str):
-    if values["status"] == "completed" and values["completed_on"] is None:
+def set_show_completion_date(values, timezone: str, previous_status: str | None = None):
+    if (
+        values["status"] == "completed"
+        and previous_status != "completed"
+        and values["completed_on"] is None
+    ):
         values["completed_on"] = user_today(timezone)
 
 
@@ -114,7 +118,7 @@ def register_collection(name, model, create_schema, patch_schema, view):
         item = owned(db, model, item_id, identity.user.id)
         values = validated_patch(create_schema, item, payload).model_dump()
         if model is Show:
-            set_show_completion_date(values, identity.user.timezone)
+            set_show_completion_date(values, identity.user.timezone, item.status)
         for key, value in values.items():
             setattr(item, key, value)
         db.commit()
