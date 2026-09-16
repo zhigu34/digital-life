@@ -162,6 +162,8 @@ docker compose exec backend python -c "import httpx; print(httpx.get('https://ap
 
 国内网络访问 TMDB 通常需要代理：在 `.env` 里配置 `HTTP_PROXY`/`HTTPS_PROXY`（或 `ALL_PROXY`，支持 socks5h://）后 `./deploy`，代理只用于元数据搜索和封面下载，不影响其他功能。
 
+若提示 `ConnectError: [Errno 101] Network is unreachable`，多半是 DNS 返回了 IPv6 地址而 Docker 网络没有 IPv6 路由（TMDB 有 IPv6 记录，Bangumi 没有）；应用已内置自动改用 IPv4 重试，一般无需处理。
+
 ## 周期维护怎么用
 
 打开「周期维护」→「添加维护」，填写名称、上次完成日期、周期和提前提醒天数。例如净水器滤芯每 6 个月更换、提前 14 天提醒。卡片显示已过天数、下次到期和剩余/逾期天数，临近到期与逾期事项会出现在「今日总览」。

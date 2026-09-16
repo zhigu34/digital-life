@@ -263,3 +263,26 @@ def test_show_poster_rejects_missing_and_untrusted_sources(workspace, monkeypatc
     ).json()
     degraded = client.get(f"/api/shows/{unreachable['id']}/poster", headers=headers)
     assert degraded.status_code == 502
+
+
+def test_send_resilient_retries_ipv4_when_network_unreachable(monkeypatch):
+    calls = []
+
+    def fake_send(method, url, *, transport=None, **kwargs):
+        calls.append(transport is not None)
+        if transport is None:
+            raise httpx.ConnectError("[Errno 101] Network is unreachable")
+        return "ok"
+
+    monkeypatch.setattr(metadata_module, "_send", fake_send)
+    assert metadata_module._send_resilient("get", "https://api.themoviedb.org/3") == "ok"
+    assert calls == [False, True]
+
+
+def test_send_resilient_passes_other_connect_errors_through(monkeypatch):
+    def fake_send(method, url, *, transport=None, **kwargs):
+        raise httpx.ConnectError("[Errno -2] getaddrinfo failed")
+
+    monkeypatch.setattr(metadata_module, "_send", fake_send)
+    with pytest.raises(httpx.ConnectError):
+        metadata_module._send_resilient("get", "https://api.bgm.tv")

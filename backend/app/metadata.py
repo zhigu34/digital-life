@@ -52,22 +52,46 @@ def _reason(error: Exception) -> str:
     return f"{type(error).__name__}: {text[:180]}"
 
 
-def _client() -> httpx.Client:
+def _send(method: str, url: str, *, transport: httpx.BaseTransport | None = None, **kwargs):
     # Honors standard proxy environment variables so hosts behind an outbound
     # proxy can still reach the APIs; hosts without one connect directly.
-    return httpx.Client(headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT_SECONDS)
+    with httpx.Client(
+        headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT_SECONDS, transport=transport
+    ) as client:
+        return getattr(client, method)(url, **kwargs)
+
+
+def _is_unreachable(error: Exception) -> bool:
+    text = str(error).lower()
+    return "network is unreachable" in text or "address family not supported" in text
+
+
+def _send_resilient(method: str, url: str, **kwargs):
+    """Request with an IPv4-only retry.
+
+    Docker networks usually have no IPv6 route, while providers like TMDB
+    publish AAAA records; the first connect attempt then fails with
+    ENETUNREACH/EAFNOSUPPORT even though IPv4 works fine.
+    """
+    try:
+        return _send(method, url, **kwargs)
+    except httpx.ConnectError as error:
+        if not _is_unreachable(error):
+            raise
+        logger.info("Retrying %s over IPv4 only", url)
+        return _send(method, url, transport=httpx.HTTPTransport(local_address="0.0.0.0"), **kwargs)
 
 
 def search_bangumi(keyword: str, subject_types: list[int]) -> list[dict]:
-    with _client() as client:
-        response = client.post(
-            f"{BANGUMI_API}/v0/search/subjects",
-            json={
-                "keyword": keyword,
-                "filter": {"type": subject_types},
-                "limit": MAX_RESULTS,
-            },
-        )
+    response = _send_resilient(
+        "post",
+        f"{BANGUMI_API}/v0/search/subjects",
+        json={
+            "keyword": keyword,
+            "filter": {"type": subject_types},
+            "limit": MAX_RESULTS,
+        },
+    )
     response.raise_for_status()
     results = []
     for item in response.json().get("data", []):
@@ -91,38 +115,39 @@ def search_bangumi(keyword: str, subject_types: list[int]) -> list[dict]:
 
 
 def search_tmdb(keyword: str, kind: str, api_key: str) -> list[dict]:
-    with _client() as client:
-        search = client.get(
-            f"{TMDB_API}/search/{kind}",
-            params={
-                "api_key": api_key,
-                "query": keyword,
-                "language": "zh-CN",
-                "include_adult": "false",
-            },
-        )
-        search.raise_for_status()
-        results = []
-        for item in search.json().get("results", [])[:TMDB_DETAIL_RESULTS]:
-            entry = {
-                "source": "tmdb",
-                "source_id": item.get("id"),
-                "title": item.get("name") or item.get("title") or keyword,
-                "original_title": item.get("original_name") or item.get("original_title"),
-                "air_date": item.get("first_air_date") or item.get("release_date"),
-                "poster": item.get("poster_path"),
-            }
-            # Season and airing status live on the detail endpoint; a failing
-            # detail lookup only degrades that one candidate.
-            try:
-                detail = client.get(
-                    f"{TMDB_API}/{kind}/{item['id']}",
-                    params={"api_key": api_key, "language": "zh-CN"},
-                )
-                detail.raise_for_status()
-                detail = detail.json()
-            except httpx.HTTPError:
-                detail = {}
+    search = _send_resilient(
+        "get",
+        f"{TMDB_API}/search/{kind}",
+        params={
+            "api_key": api_key,
+            "query": keyword,
+            "language": "zh-CN",
+            "include_adult": "false",
+        },
+    )
+    search.raise_for_status()
+    results = []
+    for item in search.json().get("results", [])[:TMDB_DETAIL_RESULTS]:
+        entry = {
+            "source": "tmdb",
+            "source_id": item.get("id"),
+            "title": item.get("name") or item.get("title") or keyword,
+            "original_title": item.get("original_name") or item.get("original_title"),
+            "air_date": item.get("first_air_date") or item.get("release_date"),
+            "poster": item.get("poster_path"),
+        }
+        # Season and airing status live on the detail endpoint; a failing
+        # detail lookup only degrades that one candidate.
+        try:
+            detail = _send_resilient(
+                "get",
+                f"{TMDB_API}/{kind}/{item['id']}",
+                params={"api_key": api_key, "language": "zh-CN"},
+            )
+            detail.raise_for_status()
+            detail = detail.json()
+        except httpx.HTTPError:
+            detail = {}
             if kind == "tv":
                 entry.update(
                     {
@@ -188,8 +213,7 @@ def lookup_metadata(
 
 
 def fetch_image(url: str) -> tuple[bytes, str]:
-    with _client() as client:
-        response = client.get(url, follow_redirects=True)
+    response = _send_resilient("get", url, follow_redirects=True)
     response.raise_for_status()
     content = response.content
     content_type = response.headers.get("content-type", "").split(";")[0].strip().lower()
