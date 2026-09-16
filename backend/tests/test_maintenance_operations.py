@@ -50,7 +50,7 @@ def test_migrate_0001_database_keeps_old_accounts_and_records(tmp_path):
         assert client.get("/api/maintenance").json() == []
         create_item(client, csrf)
     with sqlite3.connect(settings.database_path) as db:
-        assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0006",)
+        assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0007",)
         assert db.execute("PRAGMA foreign_key_check").fetchall() == []
     # Old snapshots stay usable with their matching version, not silently restored into v3.
     with pytest.raises(ValueError):
