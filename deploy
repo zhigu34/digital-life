@@ -205,6 +205,8 @@ COMPOSE=(docker compose --env-file .env)
 CONFIG_HASH=$({ hash_sources docker-compose.yml .env.example deploy scripts; hash_stream < .env; } | hash_stream)
 mkdir -p data backups
 for dir in logs data backups; do [ -w "$dir" ] || fail "目录不可写: $dir"; done
+# Keep the previous run's log so a failed deploy's evidence survives the next run.
+if [ -f logs/deploy.log ]; then mv -f logs/deploy.log logs/deploy.log.1; fi
 : > logs/deploy.log
 
 show_build_errors() {
@@ -308,7 +310,9 @@ done
 # address; retry briefly instead of failing the whole deploy.
 web_ready=0
 for attempt in 1 2 3 4 5 6 7 8 9 10; do
-  if "${COMPOSE[@]}" exec -T backend python -c "import urllib.request; urllib.request.urlopen('http://frontend/health', timeout=10)" >> logs/deploy.log 2>&1; then
+  # The backend container may carry HTTP(S)_PROXY for outbound metadata lookups;
+  # bypass them here so this in-network gateway check connects directly.
+  if "${COMPOSE[@]}" exec -T -e HTTP_PROXY= -e HTTPS_PROXY= -e ALL_PROXY= backend python -c "import urllib.request; urllib.request.urlopen('http://frontend/health', timeout=10)" >> logs/deploy.log 2>&1; then
     web_ready=1
     break
   fi

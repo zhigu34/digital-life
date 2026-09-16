@@ -175,6 +175,23 @@ exit 0
         self.assertIn('Web 入口暂未就绪', result.stdout)
         self.assertTrue((self.root / 'logs' / 'deploy-state').exists())
 
+    def test_web_gateway_check_bypasses_proxy(self):
+        # The backend container may carry HTTP(S)_PROXY for outbound metadata
+        # lookups; the in-network gateway check must bypass them, otherwise the
+        # proxy intercepts the request and the deploy fails on every retry.
+        result = self.run_deploy(FAKE_MIGRATION_PENDING='0')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('-e HTTP_PROXY= -e HTTPS_PROXY= -e ALL_PROXY=', self.log())
+
+    def test_previous_deploy_log_is_preserved(self):
+        first = self.run_deploy(FAKE_MIGRATION_PENDING='0')
+        self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+        (self.root / 'logs' / 'deploy.log').write_text('previous run evidence\n')
+        second = self.run_deploy(FAKE_MIGRATION_PENDING='0')
+        self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
+        self.assertEqual((self.root / 'logs' / 'deploy.log.1').read_text(),
+                         'previous run evidence\n')
+
     def test_port_check_can_be_skipped(self):
         sock = socket.socket()
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)

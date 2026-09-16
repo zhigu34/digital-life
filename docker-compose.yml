@@ -15,7 +15,7 @@ services:
       HTTP_PROXY: ${HTTP_PROXY:-}
       HTTPS_PROXY: ${HTTPS_PROXY:-}
       ALL_PROXY: ${ALL_PROXY:-}
-      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1},frontend
       TZ: ${TZ:-Asia/Shanghai}
     volumes:
       - ./data:/data
