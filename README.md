@@ -35,12 +35,16 @@ git pull --ff-only && ./deploy
 ```bash
 ./deploy --check-only                # 只读检查并预览部署计划
 ./deploy --full                      # 完整构建和部署
+./deploy --no-build                  # 跳过镜像构建，仅更新容器（不记录部署基线）
+./deploy --help                      # 查看全部选项
 
 docker compose ps
 docker compose logs -f --tail=100
 ```
 
-脚本根据源文件内容判断受影响服务：只改前端就只重建前端。构建完成后才停止需要更新的后端；迁移前制作数据库一致性备份。Web 和后端健康检查都通过后才记录成功版本。
+脚本根据源文件内容判断受影响服务：只改前端就只重建前端。构建前会检查并按需拉取基础镜像、校验架构匹配、检测 Web 端口冲突和磁盘空间；构建完成后才停止需要更新的后端；迁移前制作数据库一致性备份。Web 和后端健康检查都通过后才记录成功版本。
+
+离线或受限环境可用环境变量调整行为：`DEPLOY_AUTO_PULL=0` 在缺少基础镜像时不自动拉取（改为提示用 `docker save`/`docker load` 导入）、`DEPLOY_SKIP_PORT_CHECK=1` 跳过端口冲突检测、`DEPLOY_BUILD_VERBOSE=1` 显示完整构建输出。
 
 `.env`、`data/`、`backups/` 和 `logs/` 留在 NAS，不会通过 Git 同步。更新不会重置密码或删除记录。部署锁位于 `logs/deploy.lock`；异常断电遗留锁时，先确认没有部署或备份/恢复进程，再手动移除该空目录。
 

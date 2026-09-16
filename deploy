@@ -5,23 +5,61 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
 CHECK_ONLY=0
 FULL=0
-for argument in "$@"; do
-  case "$argument" in
+NO_BUILD=0
+
+info() { printf '\033[1;34m[INFO]\033[0m %s\n' "$*"; }
+ok()   { printf '\033[1;32m[ OK ]\033[0m %s\n' "$*"; }
+warn() { printf '\033[1;33m[WARN]\033[0m %s\n' "$*" >&2; }
+fail() { printf '\033[1;31m[FAIL]\033[0m %s\n' "$*" >&2; exit 1; }
+command_exists() { command -v "$1" >/dev/null 2>&1; }
+
+usage() {
+  cat <<'USAGE'
+Digital Life 智能增量部署脚本
+
+用法:
+  ./deploy [选项]
+
+默认行为:
+  对比上次成功部署与当前代码的文件哈希，只重建受影响的服务。
+  纯前端变化只重建前端；后端变化时先停服务做一致性备份，再执行数据库迁移。
+  两个服务都不变时，仍会协调恢复意外停止的容器。
+
+选项:
+  --check-only          只检查并显示部署计划，不构建镜像、不更新容器
+  --no-build            跳过需要的镜像构建，仅执行容器更新（不会记录新的部署基线）
+  --full                强制完整重建 backend 和 frontend
+  -h, --help            显示本帮助
+
+可选环境变量:
+  DEPLOY_BUILD_VERBOSE=1        显示完整 Docker 构建输出（默认仅失败时显示错误摘要）
+  DEPLOY_AUTO_PULL=0            缺少基础镜像时不自动 docker pull（用于离线环境）
+  DEPLOY_SKIP_PORT_CHECK=1      跳过 Web 端口冲突检测
+  DIGITAL_LIFE_HEALTH_ATTEMPTS  健康检查最大尝试次数（默认 60，每次间隔 2 秒）
+USAGE
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
     --check-only) CHECK_ONLY=1 ;;
+    --no-build) NO_BUILD=1 ;;
     --full) FULL=1 ;;
-    -h|--help) printf '%s\n' '用法: ./deploy [--check-only] [--full]' '预览计划不会修改配置、构建镜像或更新容器。'; exit 0 ;;
-    *) printf '未知参数: %s\n' "$argument" >&2; exit 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *) fail "未知参数: $1（使用 --help 查看用法）" ;;
   esac
+  shift
 done
-info() { printf '[INFO] %s\n' "$*"; }
-fail() { printf '[FAIL] %s\n' "$*" >&2; exit 1; }
-for program in docker git awk sort; do command -v "$program" >/dev/null || fail "缺少程序: $program"; done
+
+for program in docker git awk sort; do command_exists "$program" || fail "缺少程序: $program"; done
 docker version >/dev/null 2>&1 || fail 'Docker 服务不可用'
 docker compose version >/dev/null 2>&1 || fail '需要 Docker Compose v2'
-case "$(docker info --format '{{.Architecture}}')" in
-  x86_64|amd64|aarch64|arm64) ;;
-  *) fail '不支持的 Docker 服务器架构' ;;
-esac
+
+normalize_arch() { case "$1" in x86_64|amd64) echo amd64 ;; aarch64|arm64) echo arm64 ;; *) return 1 ;; esac; }
+DOCKER_ARCH_RAW="$(docker info --format '{{.Architecture}}' 2>/dev/null || true)"
+DOCKER_ARCH="$(normalize_arch "$DOCKER_ARCH_RAW" 2>/dev/null || true)"
+[ -n "$DOCKER_ARCH" ] || fail "不支持的 Docker 服务器架构: ${DOCKER_ARCH_RAW:-unknown}"
+ok "Docker 服务器架构: $DOCKER_ARCH"
+
 [ "$(git rev-parse --show-toplevel)" = "$ROOT_DIR" ] || fail '请在独立的 Digital Life Git 仓库运行'
 [ -f .env.example ] || fail '缺少 .env.example'
 ENV_FILE=.env
@@ -29,9 +67,11 @@ ENV_FILE=.env
 COMPOSE=(docker compose --env-file "$ENV_FILE")
 "${COMPOSE[@]}" config -q || fail 'Compose 配置无效'
 
+env_get() { [ -f "$ENV_FILE" ] || return 0; awk -v key="$1" 'index($0, key "=") == 1 {sub(/^[^=]*=/, ""); print; exit}' "$ENV_FILE"; }
+
 hash_stream() {
-  if command -v sha256sum >/dev/null; then sha256sum | awk '{print $1}'
-  elif command -v shasum >/dev/null; then shasum -a 256 | awk '{print $1}'
+  if command_exists sha256sum; then sha256sum | awk '{print $1}'
+  elif command_exists shasum; then shasum -a 256 | awk '{print $1}'
   else fail '需要 sha256sum 或 shasum'; fi
 }
 hash_sources() {
@@ -46,6 +86,69 @@ state_get() {
   [ -f logs/deploy-state ] || return 0
   awk -F= -v key="$1" '$1==key {sub(/^[^=]*=/, ""); print; exit}' logs/deploy-state
 }
+
+image_arch_ok() {
+  local image="$1" expected="$2" actual
+  actual="$(docker image inspect "$image" --format '{{.Architecture}}' 2>/dev/null || true)"
+  [ -n "$actual" ] || return 1
+  actual="$(normalize_arch "$actual" 2>/dev/null || echo "$actual")"
+  [ "$actual" = "$expected" ]
+}
+ensure_image() {
+  local image="$1" arch="$2"
+  image_arch_ok "$image" "$arch" && { ok "本地基础镜像可用: $image"; return 0; }
+  [ "${DEPLOY_AUTO_PULL:-1}" != "0" ] || fail "缺少可用镜像 $image，请先 docker pull 或 docker load（DEPLOY_AUTO_PULL=0）"
+  warn "本地缺少可用镜像: $image"
+  info "尝试拉取: $image"
+  docker pull "$image" || fail "无法拉取 $image；网络受限时请在其他机器 docker save 后在本机 docker load"
+  image_arch_ok "$image" "$arch" || fail "镜像 $image 架构不匹配 $arch"
+}
+
+project_owns_port() {
+  local port="$1" container service
+  for service in frontend backend; do
+    container="$("${COMPOSE[@]}" ps -q "$service" 2>/dev/null || true)"
+    [ -n "$container" ] || continue
+    if docker inspect "$container" >/dev/null 2>&1 && docker port "$container" 2>/dev/null | grep -Eq ":${port}$"; then
+      return 0
+    fi
+  done
+  return 1
+}
+port_in_use() {
+  local port="$1"
+  if command_exists ss; then ss -ltnH 2>/dev/null | awk '{print $4}' | grep -Eq ":${port}$"; return $?
+  elif command_exists lsof; then lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; return $?
+  elif command_exists netstat; then netstat -an 2>/dev/null | grep -E 'LISTEN|LISTENING' | grep -Eq "[\.:]${port}[[:space:]]"; return $?
+  fi
+  return 2
+}
+check_port() {
+  local name="$1" port="$2" rc
+  [ "${DEPLOY_SKIP_PORT_CHECK:-0}" = "1" ] && { warn "已跳过 $name 端口检查（DEPLOY_SKIP_PORT_CHECK=1）"; return 0; }
+  if project_owns_port "$port"; then ok "$name 端口 $port 已由本项目使用"; return 0; fi
+  set +e; port_in_use "$port"; rc=$?; set -e
+  case "$rc" in
+    0) fail "$name 端口 $port 已被其他进程占用，请修改 .env 的 DIGITAL_LIFE_WEB_PORT" ;;
+    1) ok "$name 端口可用: $port" ;;
+    2) warn "没有 ss/lsof/netstat，跳过 $name 端口 $port 检测" ;;
+  esac
+}
+
+# Pre-flight checks that touch nothing on disk.
+WEB_PORT="${DIGITAL_LIFE_WEB_PORT:-$(env_get DIGITAL_LIFE_WEB_PORT)}"
+WEB_PORT="${WEB_PORT:-8090}"
+case "$WEB_PORT" in ''|*[!0-9]*) fail "DIGITAL_LIFE_WEB_PORT 不是有效端口: $WEB_PORT" ;; esac
+[ "$WEB_PORT" -ge 1 ] && [ "$WEB_PORT" -le 65535 ] || fail "DIGITAL_LIFE_WEB_PORT 超出端口范围: $WEB_PORT"
+check_port Web "$WEB_PORT"
+
+FREE_KB="$(df -Pk "$ROOT_DIR" 2>/dev/null | awk 'NR==2 {print $4}' || true)"
+if [ -n "$FREE_KB" ] && [ "$FREE_KB" -lt 20971520 ]; then
+  warn "当前文件系统剩余空间不足 20 GiB，构建镜像可能失败"
+elif [ -n "$FREE_KB" ]; then
+  ok "磁盘剩余空间: 约 $((FREE_KB / 1024 / 1024)) GiB"
+fi
+
 BACKEND_HASH=$(hash_sources backend .dockerignore)
 FRONTEND_HASH=$(hash_sources frontend .dockerignore)
 CONFIG_HASH=$({ hash_sources docker-compose.yml .env.example deploy scripts; hash_stream < "$ENV_FILE"; } | hash_stream)
@@ -57,8 +160,32 @@ if [ "$FULL" = 1 ] || [ "$CONFIG_HASH" != "$(state_get config)" ]; then BACKEND=
 SERVICES=()
 [ "$BACKEND" = 0 ] || SERVICES+=(backend)
 [ "$FRONTEND" = 0 ] || SERVICES+=(frontend)
+
+CURRENT_COMMIT="$(git rev-parse HEAD)"
+PREVIOUS_COMMIT="$(state_get commit || true)"
+CHANGED_FILES=""
+if [ -n "$PREVIOUS_COMMIT" ] && git cat-file -e "${PREVIOUS_COMMIT}^{commit}" 2>/dev/null; then
+  if [ "$PREVIOUS_COMMIT" != "$CURRENT_COMMIT" ]; then
+    CHANGED_FILES="$(git diff --name-only "$PREVIOUS_COMMIT" "$CURRENT_COMMIT" 2>/dev/null || true)"
+  fi
+  CHANGED_FILES="$(printf '%s\n%s\n' "$CHANGED_FILES" "$(git diff --name-only HEAD 2>/dev/null || true)" \
+    | awk 'NF && !seen[$0]++')"
+fi
+
+printf '\n'
 info "部署计划: ${SERVICES[*]:-源码未变，仅检查并恢复服务}"
-if [ "$CHECK_ONLY" = 1 ]; then info '检查结束；未修改文件或服务'; exit 0; fi
+if [ -n "$CHANGED_FILES" ]; then
+  printf '检测到变更文件:\n'
+  printf '%s\n' "$CHANGED_FILES" | awk 'NR<=20{print "  - " $0}'
+  CHANGED_COUNT="$(printf '%s\n' "$CHANGED_FILES" | awk 'NF{n++}END{print n+0}')"
+  [ "$CHANGED_COUNT" -le 20 ] || printf '  ... 另有 %s 个文件\n' "$((CHANGED_COUNT - 20))"
+fi
+if [ "$BACKEND" = 1 ]; then
+  warn "本次需要更新 backend；迁移期间后端会短暂停止服务"
+else
+  ok "backend 源码未变，保持运行"
+fi
+if [ "$CHECK_ONLY" = 1 ]; then ok '检查结束（--check-only）；未修改文件或服务'; exit 0; fi
 
 umask 077
 mkdir -p logs
@@ -72,16 +199,55 @@ cleanup() {
 trap cleanup EXIT
 if [ ! -f .env ]; then cp .env.example .env; info '已创建 .env；管理员密码通过初始化命令设置'; fi
 chmod 600 .env
+ENV_FILE=.env
 COMPOSE=(docker compose --env-file .env)
-mkdir -p data backups
-# Hash final configuration, not the template filename.
+# Recompute the config hash against the final .env used at runtime.
 CONFIG_HASH=$({ hash_sources docker-compose.yml .env.example deploy scripts; hash_stream < .env; } | hash_stream)
+mkdir -p data backups
+for dir in logs data backups; do [ -w "$dir" ] || fail "目录不可写: $dir"; done
 : > logs/deploy.log
+
+show_build_errors() {
+  local log_file="$1" errors
+  errors="$(grep -Ein '(^|[^[:alpha:]])(error|fatal|failed|failure|timeout|timed out|exit code|non-zero|unable to|could not|connection refused|network is unreachable)([^[:alpha:]]|$)' "$log_file" 2>/dev/null | tail -n 80 || true)"
+  if [ -n "$errors" ]; then
+    warn "构建错误摘要："
+    printf '%s\n' "$errors" >&2
+  else
+    warn "未匹配到标准错误行，显示构建日志最后 60 行："
+    tail -n 60 "$log_file" >&2 2>/dev/null || true
+  fi
+}
+
 if [ "${#SERVICES[@]}" -gt 0 ]; then
-  info "构建: ${SERVICES[*]}（构建完成前保持现有服务）"
-  "${COMPOSE[@]}" build "${SERVICES[@]}" >> logs/deploy.log 2>&1 || { tail -n 60 logs/deploy.log >&2; fail '镜像构建失败'; }
+  if [ "$NO_BUILD" = 1 ]; then
+    warn "已使用 --no-build，跳过镜像构建: ${SERVICES[*]}"
+  else
+    for service in "${SERVICES[@]}"; do
+      case "$service" in
+        backend) ensure_image python:3.12-slim "$DOCKER_ARCH" ;;
+        frontend)
+          ensure_image node:22-alpine "$DOCKER_ARCH"
+          ensure_image nginx:1.28-alpine "$DOCKER_ARCH"
+          ;;
+      esac
+    done
+    info "开始构建: ${SERVICES[*]}（默认静默，完整日志: logs/deploy.log）"
+    set +e
+    if [ "${DEPLOY_BUILD_VERBOSE:-0}" = "1" ]; then
+      "${COMPOSE[@]}" build "${SERVICES[@]}" 2>&1 | tee -a logs/deploy.log; BUILD_RC=${PIPESTATUS[0]}
+    else
+      "${COMPOSE[@]}" build "${SERVICES[@]}" >> logs/deploy.log 2>&1; BUILD_RC=$?
+    fi
+    set -e
+    if [ "$BUILD_RC" -ne 0 ]; then
+      show_build_errors logs/deploy.log
+      fail "镜像构建失败，完整日志: logs/deploy.log"
+    fi
+    ok "镜像构建完成: ${SERVICES[*]}"
+  fi
 fi
-if [ "$BACKEND" = 1 ]; then
+if [ "$BACKEND" = 1 ] && [ "$NO_BUILD" = 0 ]; then
   info '暂停后端写入，准备数据库迁移'
   "${COMPOSE[@]}" stop backend >> logs/deploy.log 2>&1 || fail '无法停止后端'
   if [ -f data/digital-life.db ]; then
@@ -93,29 +259,65 @@ if [ "$BACKEND" = 1 ]; then
 fi
 # Compose reconciles both services but does not recreate unchanged healthy containers.
 # This also recovers an unchanged service that was stopped independently.
-"${COMPOSE[@]}" up -d --no-build >> logs/deploy.log 2>&1 || fail '服务启动或更新失败'
+set +e
+"${COMPOSE[@]}" up -d --no-build >> logs/deploy.log 2>&1
+UP_RC=$?
+set -e
+if [ "$UP_RC" -ne 0 ]; then
+  if grep -q "all predefined address pools have been fully subnetted" logs/deploy.log; then
+    warn '检测到 Docker 默认地址池已耗尽。本项目不自动清理网络，请手动执行 docker network prune 后重试'
+  fi
+  tail -n 60 logs/deploy.log >&2
+  fail '服务启动或更新失败，完整日志: logs/deploy.log'
+fi
 
-ATTEMPTS=${DIGITAL_LIFE_HEALTH_ATTEMPTS:-60}
-case "$ATTEMPTS" in ''|*[!0-9]*) fail '健康检查次数必须为正整数';; esac
-[ "$ATTEMPTS" -gt 0 ] || fail '健康检查次数必须为正整数'
-for service in backend frontend; do
-  HEALTHY=0
-  for ((attempt=1; attempt<=ATTEMPTS; attempt++)); do
-    CONTAINER=$("${COMPOSE[@]}" ps -q "$service")
+wait_for_health() {
+  local service="$1" attempts="${DIGITAL_LIFE_HEALTH_ATTEMPTS:-60}" attempt=1
+  case "$attempts" in ''|*[!0-9]*) fail '健康检查次数必须为正整数';; esac
+  [ "$attempts" -gt 0 ] || fail '健康检查次数必须为正整数'
+  while [ "$attempt" -le "$attempts" ]; do
+    CONTAINER="$("${COMPOSE[@]}" ps -q "$service")"
     STATUS=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$CONTAINER" 2>/dev/null || true)
-    if [ "$STATUS" = healthy ]; then HEALTHY=1; break; fi
-    [ "$attempt" = "$ATTEMPTS" ] || sleep 2
+    case "$STATUS" in
+      healthy) return 0 ;;
+      unhealthy|exited|dead)
+        "${COMPOSE[@]}" logs --tail=80 "$service" >> logs/deploy.log 2>&1 || true
+        return 1
+        ;;
+    esac
+    [ "$attempt" = "$attempts" ] || sleep 2
+    attempt=$((attempt + 1))
   done
-  [ "$HEALTHY" = 1 ] || fail "$service 未通过健康检查"
+  return 1
+}
+for service in backend frontend; do
+  info "等待 $service 健康..."
+  if ! wait_for_health "$service"; then fail "$service 未通过健康检查（状态: ${STATUS:-未知}）"; fi
+  ok "$service healthy"
 done
 # Verify the actual Web reverse-proxy route, not only process liveness.
 "${COMPOSE[@]}" exec -T backend python -c "import urllib.request; urllib.request.urlopen('http://frontend/health', timeout=10)" >> logs/deploy.log 2>&1 || fail 'Web 入口到后端的健康检查失败'
-CURRENT_COMMIT=$(git rev-parse HEAD)
-{
-  printf 'commit=%s\n' "$CURRENT_COMMIT"
-  printf 'backend=%s\nfrontend=%s\nconfig=%s\n' "$BACKEND_HASH" "$FRONTEND_HASH" "$CONFIG_HASH"
-} > logs/deploy-state.tmp
-mv logs/deploy-state.tmp logs/deploy-state
-info "部署成功: ${CURRENT_COMMIT:0:12}"
+ok 'Web 入口与后端 API 反代正常'
+
+CURRENT_COMMIT="$(git rev-parse HEAD)"
+if [ "$NO_BUILD" = 1 ] && [ "${#SERVICES[@]}" -gt 0 ]; then
+  warn '由于跳过了必要构建，本次不更新部署基线；下次仍会检测到这些源码变化'
+else
+  {
+    printf 'commit=%s\n' "$CURRENT_COMMIT"
+    printf 'backend=%s\nfrontend=%s\nconfig=%s\n' "$BACKEND_HASH" "$FRONTEND_HASH" "$CONFIG_HASH"
+  } > logs/deploy-state.tmp
+  mv logs/deploy-state.tmp logs/deploy-state
+fi
+ok "部署成功: ${CURRENT_COMMIT:0:12}"
 "${COMPOSE[@]}" ps
-info '首次使用: docker compose exec backend python -m app.cli create-admin --username admin'
+printf '\n'
+printf 'Digital Life Web: http://127.0.0.1:%s\n' "$WEB_PORT"
+printf '后端 API:          仅 Docker 内网（backend:8000，经 Web /api）\n'
+if [ ! -f data/digital-life.db ]; then
+  printf '首次使用请创建管理员:\n  docker compose exec backend python -m app.cli create-admin --username admin\n'
+fi
+printf '常用命令:\n'
+printf '  增量部署: git pull --ff-only && ./deploy\n'
+printf '  预览计划: ./deploy --check-only\n'
+printf '  查看日志: docker compose logs -f --tail=100\n'

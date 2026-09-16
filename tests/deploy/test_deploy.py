@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 import shutil
+import socket
 import subprocess
 import tempfile
 import unittest
@@ -30,6 +31,8 @@ case "$*" in
   *" info "*|"info "*) echo x86_64;;
   *" ps -q backend"*) echo fake-backend;;
   *" ps -q frontend"*) echo fake-frontend;;
+  *"image inspect"*) [ -f "$FAKE_IMAGES_MISSING" ] && exit 1; echo amd64;;
+  *"pull"*) rm -f "$FAKE_IMAGES_MISSING";;
   *"inspect "*"fake-backend"*) if [ -f "$FAKE_STOP_FILE" ]; then echo exited; else echo healthy; fi;;
   *"inspect "*) echo healthy;;
   *" up -d --no-build") rm -f "$FAKE_STOP_FILE";;
@@ -109,6 +112,37 @@ exit 0
         self.assertIn('urllib', self.log())
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse((self.root / 'logs' / 'deploy-state').exists())
+
+    def test_missing_base_image_is_pulled_before_build(self):
+        images_missing = self.root / 'images-missing'
+        images_missing.touch()
+        result = self.run_deploy(FAKE_IMAGES_MISSING=str(images_missing))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('pull', self.log())
+        self.assertFalse(images_missing.exists())
+
+    def test_occupied_port_is_rejected_before_deployment(self):
+        sock = socket.socket()
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(('127.0.0.1', 0))
+        port = sock.getsockname()[1]
+        sock.listen(1)
+        self.addCleanup(sock.close)
+        result = self.run_deploy('--check-only', DIGITAL_LIFE_WEB_PORT=str(port))
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(str(port), result.stderr)
+        self.assertIn('已被其他进程占用', result.stderr)
+
+    def test_port_check_can_be_skipped(self):
+        sock = socket.socket()
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(('127.0.0.1', 0))
+        port = sock.getsockname()[1]
+        sock.listen(1)
+        self.addCleanup(sock.close)
+        result = self.run_deploy('--check-only', DIGITAL_LIFE_WEB_PORT=str(port),
+                                 DEPLOY_SKIP_PORT_CHECK='1')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 if __name__ == '__main__':
