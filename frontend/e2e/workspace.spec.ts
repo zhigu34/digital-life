@@ -294,6 +294,44 @@ test('quick notes keep private daily entries with search', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '把此刻写下来', exact: true })).toBeVisible()
 })
 
+test('anime metadata search fills title and episode count', async ({ page }) => {
+  await login(page, await account())
+  await page.route('**/api/shows/metadata**', async (route) => {
+    const url = new URL(route.request().url())
+    if (!url.searchParams.get('keyword')?.includes('芙莉莲')) {
+      await route.fallback()
+      return
+    }
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        results: [
+          {
+            source: 'bangumi',
+            source_id: 400602,
+            title: '葬送的芙莉莲',
+            original_title: '葬送のフリーレン',
+            air_date: '2023-09-29',
+            total_episodes: 28,
+          },
+        ],
+      }),
+    })
+  })
+  await navigate(page, '追剧片单')
+  await page.getByRole('button', { name: '添加作品', exact: true }).first().click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByRole('combobox', { name: '类型', exact: true }).selectOption('anime')
+  await dialog.getByLabel('名称', { exact: true }).fill('芙莉莲')
+  await dialog.getByRole('button', { name: '联网搜索动漫信息' }).click()
+  await dialog.getByRole('button', { name: /葬送的芙莉莲/ }).click()
+  await expect(dialog.getByLabel('名称', { exact: true })).toHaveValue('葬送的芙莉莲')
+  await expect(dialog.getByLabel('总集数', { exact: false })).toHaveValue('28')
+  await save(page)
+  await expect(page.getByRole('heading', { name: '葬送的芙莉莲', exact: true })).toBeVisible()
+  await page.unroute('**/api/shows/metadata**')
+})
+
 test('recurring maintenance tracks completion, corrections, reminders and private history', async ({ page }, testInfo) => {
   const alice = await account(), bob = await account()
   await login(page, alice)

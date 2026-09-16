@@ -50,3 +50,7 @@ Backend CLI via `python -m app.cli`: `migrate`, `create-admin --username USER` (
 ## 文字随记（2026-09-16）
 
 `GET/POST /api/notes`、`GET/PATCH/DELETE /api/notes/{id}`，与其他集合一致的归属与校验规则。Note：`{id,content,entry_date,created_at}`；content 1–4000 字符必填，entry_date YYYY-MM-DD 必填（允许过去日期补录），created_at 服务器时间。同日多条允许；按 id 倒序返回。导出为 `notes` 数组；导入支持 `notes` 键（旧导出缺省为空）。数据表由 Alembic `0003` 创建；CLI 恢复严格校验 `0003`。
+
+## 追番元数据搜索（2026-09-16，可选联网功能）
+
+`GET /api/shows/metadata?keyword=1..80&media_type=anime`（登录会话）→ `{results:[{source:'bangumi',source_id,title,original_title,air_date,total_episodes}]}`，最多 8 条。仅在用户手动触发时调用 Bangumi 开放接口一次；非 anime 返回 400，关键词空白/超长 422，上游任何故障 502，`DIGITAL_LIFE_DISABLE_METADATA=true` 时 503。不落库、不自动写入；该路由注册在通用 `/api/shows/{id}` 之前。

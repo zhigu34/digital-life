@@ -10,6 +10,7 @@ class Settings:
     trusted_origins: tuple[str, ...] = ()
     session_ttl: int = 14 * 24 * 60 * 60
     cookie_name: str = "digital_life_session"
+    metadata_disabled: bool = False
 
     @property
     def database_path(self) -> Path:
@@ -22,9 +23,17 @@ class Settings:
         secure = os.getenv("DIGITAL_LIFE_SECURE_COOKIE", "false").lower()
         if secure not in {"true", "false", "1", "0"}:
             raise ValueError("DIGITAL_LIFE_SECURE_COOKIE must be true or false")
+        disabled = os.getenv("DIGITAL_LIFE_DISABLE_METADATA", "false").lower()
+        if disabled not in {"true", "false", "1", "0"}:
+            raise ValueError("DIGITAL_LIFE_DISABLE_METADATA must be true or false")
         origins = tuple(
             x.strip().rstrip("/")
             for x in os.getenv("DIGITAL_LIFE_TRUSTED_ORIGINS", "").split(",")
             if x.strip()
         )
-        return cls(path, secure in {"true", "1"}, origins)
+        return cls(
+            path,
+            secure in {"true", "1"},
+            origins,
+            metadata_disabled=disabled in {"true", "1"},
+        )

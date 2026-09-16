@@ -4,7 +4,7 @@
 
 这是一个可在 x86 NAS 上自托管的生活工作台。用户使用独立账号登录，记录待办/在办、出生天数、纪念日、固定花销和追番追剧。界面以中文为主，同时适配桌面和手机。
 
-用户明确选择：**本地开发 → GitHub → CI 测试 → NAS `git pull --ff-only && ./deploy`**。仓库是 `zhigu34/digital-life`。工程部署方式参考相邻的 `camera-recorder`，但本项目独立维护；没有任务授权时不要修改那个项目。这里使用 Docker Compose 自托管，不要改成第三方网站托管，也不要加入运行时必须联网的外部内容/AI 服务。
+用户明确选择：**本地开发 → GitHub → CI 测试 → NAS `git pull --ff-only && ./deploy`**。仓库是 `zhigu34/digital-life`。工程部署方式参考相邻的 `camera-recorder`，但本项目独立维护；没有任务授权时不要修改那个项目。这里使用 Docker Compose 自托管，不要改成第三方网站托管。核心功能不得依赖运行时联网；唯一例外是追剧表单中用户手动触发的 Bangumi 动漫元数据搜索（`app/metadata.py`，可用 `DIGITAL_LIFE_DISABLE_METADATA=true` 整体关闭），也不接入需要密钥或 AI 的外部服务。
 
 ## 新会话从哪里开始
 

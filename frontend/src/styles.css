@@ -1712,6 +1712,51 @@ input:disabled {
   color: var(--muted);
   font-size: 11px;
 }
+/* Metadata lookup */
+.metadata-lookup {
+  margin: 4px 0 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+.metadata-lookup > .text-button {
+  font-size: 12px;
+}
+.metadata-results {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 210px;
+  overflow-y: auto;
+}
+.metadata-results button {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--soft);
+  text-align: left;
+}
+.metadata-results button:hover {
+  border-color: var(--green);
+  background: var(--green-soft);
+}
+.metadata-results strong {
+  font-size: 12px;
+}
+.metadata-results span {
+  font-size: 10px;
+  color: var(--muted);
+}
 /* Notes */
 .notes-list {
   display: flex;

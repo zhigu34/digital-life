@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { reactive, ref } from "vue";
+import { computed, reactive, ref } from "vue";
 import type { Collection, RecordItem } from "../types";
+import { api } from "../api";
+import AppIcon from "./AppIcon.vue";
 import ModalDialog from "./ModalDialog.vue";
 const props = defineProps<{
   collection: Collection;
@@ -13,6 +15,50 @@ const emit = defineEmits<{
   close: [];
   save: [data: Record<string, unknown>];
 }>();
+interface MetadataResult {
+  source: string;
+  source_id: number;
+  title: string;
+  original_title: string | null;
+  air_date: string | null;
+  total_episodes: number | null;
+}
+const metadataResults = ref<MetadataResult[]>([]),
+  metadataBusy = ref(false),
+  metadataError = ref("");
+const canLookup = computed(
+  () =>
+    props.collection === "shows" &&
+    !props.item &&
+    form.media_type === "anime",
+);
+async function lookupMetadata() {
+  metadataError.value = "";
+  metadataResults.value = [];
+  const keyword = String(form.title).trim();
+  if (!keyword) {
+    metadataError.value = "先填写名称关键词，再联网搜索";
+    return;
+  }
+  metadataBusy.value = true;
+  try {
+    const data = await api<{ results: MetadataResult[] }>(
+      `/shows/metadata?keyword=${encodeURIComponent(keyword)}&media_type=anime`,
+    );
+    metadataResults.value = data.results;
+    if (!data.results.length)
+      metadataError.value = "没有找到相关动漫，可以直接手动填写";
+  } catch (e) {
+    metadataError.value = e instanceof Error ? e.message : "搜索失败";
+  } finally {
+    metadataBusy.value = false;
+  }
+}
+function applyMetadata(result: MetadataResult) {
+  form.title = result.title;
+  if (result.total_episodes) form.total = result.total_episodes;
+  metadataResults.value = [];
+}
 const titles = {
   tasks: "待办",
   expenses: "周期费用",
@@ -236,6 +282,35 @@ function save() {
               </option>
             </select></label
           >
+        </div>
+        <div v-if="canLookup" class="metadata-lookup">
+          <button
+            type="button"
+            class="text-button"
+            :disabled="metadataBusy"
+            @click="lookupMetadata"
+          >
+            <AppIcon :name="metadataBusy ? 'loading' : 'search'" :size="15" />{{
+              metadataBusy ? "搜索中…" : "联网搜索动漫信息"
+            }}
+          </button>
+          <span class="field-hint">手动触发，数据来自 Bangumi 开放接口</span>
+          <p v-if="metadataError" class="field-hint" role="alert">
+            {{ metadataError }}
+          </p>
+          <ul v-if="metadataResults.length" class="metadata-results">
+            <li v-for="result in metadataResults" :key="result.source_id">
+              <button type="button" @click="applyMetadata(result)">
+                <strong>{{ result.title }}</strong>
+                <span>{{
+                  (result.total_episodes
+                    ? `${result.total_episodes} 集`
+                    : "集数未知") +
+                  (result.air_date ? ` · ${result.air_date}` : "")
+                }}</span>
+              </button>
+            </li>
+          </ul>
         </div></template
       ><template v-if="collection === 'milestones'"
         ><label>日期<input v-model="form.date" type="date" required /></label
