@@ -1,6 +1,6 @@
 # Digital Life 接手状态
 
-更新：2026-09-16。首版及周期维护功能均已合入 GitHub `main` 并由用户确认在 NAS 首次部署成功。同日本地完成五个新功能迭代（统一日历、统计图表、JSON 导入、文字随记、动漫元数据搜索），以叠加分支 `codex/show-metadata`（含 `f6d556a..bfd4c00` 五个提交）推送待 CI 验证；尚未合入 `main`，NAS 也尚未更新。
+更新：2026-09-16。首版及周期维护功能均已合入 GitHub `main` 并由用户确认在 NAS 首次部署成功。同日五个新功能迭代（统一日历、统计图表、JSON 导入、文字随记、动漫元数据搜索）已合入 `main`（快进到 `438ec5b`），main Actions `35055951580` 的 backend、frontend、docker-e2e 全部通过；NAS 待用户部署。
 
 ## 用户确认的方向
 
@@ -38,13 +38,13 @@
 ## 接下来
 
 1. NAS 首次部署已于 2026-09-16 由用户确认成功（用户反馈；本会话未远程连接 NAS 复核）。
-2. `codex/show-metadata` 分支五个新功能：等待/核对 GitHub CI 结果后，经用户确认合入 `main`，再由用户在 NAS 执行 `git pull --ff-only && ./deploy`（0003 迁移前 deploy 会自动备份旧库）。分支为叠加链：calendar → stats → import → notes → metadata，按序合入或直接合入顶端即可。
+2. 用户在 NAS 执行 `git pull --ff-only && ./deploy`（0003 迁移前 deploy 会自动备份旧库）。本次包含 Alembic `0003` 与新增 `DIGITAL_LIFE_DISABLE_METADATA` 配置项（默认关闭，无需改动 `.env`）。
 3. 如后续通过域名公网访问，按 README 配置 HTTPS、Secure Cookie 和可信 Origin；建议先补登录失败限速和 NAS 侧自动定期备份（2026-09-16 评审提出，尚未实施，仅内网使用时可放缓）。
-4. 当前没有已知阻断功能使用的问题；后续功能继续从 `main` 创建新的 `codex/` 分支。
+4. 当前没有已知阻断功能使用的问题；后续功能继续从 `main` 创建新的 `codex/` 分支。用户已授权固定交付流程：分支 CI 全绿后直接合入 `main` 推送，NAS 部署由用户执行（见 AGENTS.md 协作与交付）。
 
 ## 本地与 Git 状态提示
 
-主开发目录就是当前仓库；本轮五个功能在叠加分支 `codex/show-metadata`（基于 `main`@`4840856`），尚未合入。实际状态以 Git 为准。
+主开发目录就是当前仓库；本轮五个功能已合入 `main`（`438ec5b`），分支 `codex/calendar-view`、`codex/stats-charts`、`codex/json-import`、`codex/quick-notes`、`codex/show-metadata` 为其叠加链，可留档或删除。实际状态以 Git 为准。
 SSH 已验证能访问 `zhigu34` 的 GitHub，远程地址使用 `git@github.com:zhigu34/digital-life.git`。没有安装 gh CLI，可使用现有 GitHub 连接器或公开 Actions API 读取状态。
 本地 `.local/preview-data` 仅为本次联调使用，含测试账号，不能复制到 NAS 生产数据目录或提交。
 不要依赖上一会话的进程 ID；重新检查端口是否已有服务。需要启动服务或联网时遵守当前环境权限。
