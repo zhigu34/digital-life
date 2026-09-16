@@ -1,6 +1,6 @@
 # Digital Life 接手状态
 
-更新：2026-09-16。首版及周期维护功能均已合入 GitHub `main` 并由用户确认在 NAS 首次部署成功。同日多个新功能迭代已合入 `main`（快进到 `ede5949`）：统一日历、统计图表、JSON 导入、文字随记、影视元数据搜索（Bangumi），随后扩展为 Bangumi/TMDB 双信息源独立可选（含封面后端代理缓存、季数、完结/连载状态，Show 新字段 + 迁移 `0004`），以及打卡功能（每日必做/在做两类，连续与累计天数、补卡、撤销、归档，迁移 `0005`，今日总览一键打卡）。main Actions `35062580018` 的 backend、frontend、docker-e2e 全部通过；NAS 待用户部署。TMDB 真实接口因无 key 未实测（stub 单测 + E2E 已覆盖），待用户在 NAS `.env` 填写 `DIGITAL_LIFE_TMDB_API_KEY` 后实际验证。
+更新：2026-09-16。首版及周期维护功能均已合入 GitHub `main` 并由用户确认在 NAS 首次部署成功。同日多个新功能迭代已合入 `main`（快进到 `ede5949`）：统一日历、统计图表、JSON 导入、文字随记、影视元数据搜索（Bangumi），随后扩展为 Bangumi/TMDB 双信息源独立可选（含封面后端代理缓存、季数、完结/连载状态，Show 新字段 + 迁移 `0004`），以及打卡功能（每日必做/在做两类，连续与累计天数、补卡、撤销、归档，迁移 `0005`，今日总览一键打卡）。main Actions `35062580018` 与后续 TMDB 环境变量透传修复 `7924064`（docker-compose 此前未把 DIGITAL_LIFE_TMDB_API_KEY/DISABLE_METADATA 传入 backend 容器，导致用户在 .env 填 key 后仍提示未配置；main Actions `35064216310` 全绿）均已推送；NAS 待用户再次部署。TMDB 真实接口因无 key 未实测（stub 单测 + E2E 已覆盖），待用户在 NAS `.env` 填写 `DIGITAL_LIFE_TMDB_API_KEY` 后实际验证。
 
 ## 用户确认的方向
 
