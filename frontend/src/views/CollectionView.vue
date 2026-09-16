@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import type { Collection, Records, RecordItem, Task, Stats } from "../types";
+import type { Collection, Records, RecordItem, Stats } from "../types";
 import {
   labels,
   money,
@@ -12,6 +12,7 @@ import { metricCurrencies, monthTrend, trendTotal } from "../stats";
 import AppIcon from "../components/AppIcon.vue";
 import EmptyState from "../components/EmptyState.vue";
 import BarChart from "../components/BarChart.vue";
+
 const props = defineProps<{
   collection: Collection;
   records: Records;
@@ -44,14 +45,6 @@ const config = {
     empty: "给固定支出一个位置",
     hint: "记录订阅、会员或房租，到期时手动确认付款。",
   },
-  shows: {
-    title: "追剧片单",
-    kicker: "A GOOD STORY AWAITS",
-    description: "收藏想看的故事，记住每一次看到哪里。",
-    add: "添加作品",
-    empty: "下一段好故事，等你开启",
-    hint: "添加一部想看的电影、剧集或动漫，慢慢享受。",
-  },
   milestones: {
     title: "重要日子",
     kicker: "MOMENTS THAT MATTER",
@@ -61,7 +54,9 @@ const config = {
     hint: "生日、周年、旅行出发日，把期待留在这里。",
   },
 };
-const current = computed(() => config[props.collection]);
+const current = computed(
+  () => config[props.collection as keyof typeof config],
+);
 const filtered = computed(() =>
   props.records[props.collection].filter(
     (item) =>
@@ -94,9 +89,7 @@ const expenseTrendTotal = computed(() => trendTotal(expenseTrend.value));
 const tabs = computed(() =>
   props.collection === "tasks"
     ? ["all", "todo", "doing", "waiting", "done"]
-    : props.collection === "shows"
-      ? ["all", "watching", "planned", "completed", "paused"]
-      : [],
+    : [],
 );
 const dueLabel = (date: string) => {
   const days = daysBetween(props.today, date);
@@ -109,6 +102,7 @@ const dueLabel = (date: string) => {
         : date.replaceAll("-", ".");
 };
 </script>
+
 <template>
   <section :key="collection" class="page collection-page">
     <header class="page-heading">
@@ -124,6 +118,7 @@ const dueLabel = (date: string) => {
         <AppIcon name="plus" :size="18" />{{ current.add }}
       </button>
     </header>
+
     <section v-if="collection === 'expenses'" class="expense-summary">
       <div v-if="!summaries.length" class="summary-card">
         <span>月均成本</span><strong>—</strong><small>添加费用后自动计算</small>
@@ -143,6 +138,7 @@ const dueLabel = (date: string) => {
         月均成本将每期金额按月摊分；本月应付按费用周期推算，分别统计各币种。确认已付只推进下次日期，不记录银行交易。
       </p>
     </section>
+
     <section
       v-if="collection === 'expenses' && expenseTrend.length"
       class="panel trend-panel"
@@ -179,28 +175,7 @@ const dueLabel = (date: string) => {
         </p>
       </div>
     </section>
-    <section
-      v-if="collection === 'shows' && stats && records.shows.length"
-      class="shows-stats"
-      aria-label="追剧统计"
-    >
-      <div
-        v-for="[value, label] in [
-          [stats.shows.watching, '在看'],
-          [stats.shows.planned, '想看'],
-          [stats.shows.completed, '已看完'],
-          [stats.shows.paused, '暂搁'],
-        ]"
-        :key="label"
-        class="summary-card"
-      >
-        <span>{{ label }}</span><strong>{{ value }}</strong>
-      </div>
-      <div class="summary-card">
-        <span>累计看完</span
-        ><strong>{{ stats.shows.episodes_watched }}<small>集</small></strong>
-      </div>
-    </section>
+
     <div class="collection-toolbar">
       <div v-if="tabs.length" class="tabs" aria-label="状态筛选">
         <button
@@ -221,6 +196,7 @@ const dueLabel = (date: string) => {
           placeholder="搜索记录…"
       /></label>
     </div>
+
     <EmptyState
       v-if="!records[collection].length"
       :icon="collection"
@@ -234,24 +210,16 @@ const dueLabel = (date: string) => {
       title="没有找到对应记录"
       description="试试其他关键词，或切换状态筛选。"
     />
+
     <div
       v-else
-      :class="[
-        'record-list',
-        {
-          'card-grid': collection === 'shows' || collection === 'milestones',
-          'has-shows': collection === 'shows',
-        },
-      ]"
+      :class="['record-list', { 'card-grid': collection === 'milestones' }]"
     >
       <article
         v-for="item in filtered"
         :key="item.id"
         class="record-card"
-        :class="{
-          'is-done': 'status' in item && item.status === 'done',
-          'show-card': collection === 'shows',
-        }"
+        :class="{ 'is-done': 'status' in item && item.status === 'done' }"
       >
         <template v-if="collection === 'tasks' && 'due_date' in item"
           ><button
@@ -327,65 +295,6 @@ const dueLabel = (date: string) => {
             >
               确认本期已付<AppIcon name="chevron" :size="14" />
             </button></div></template
-        ><template v-if="collection === 'shows' && 'progress' in item"
-          ><button
-            type="button"
-            class="show-cover"
-            :class="item.media_type"
-            :aria-label="`编辑 ${item.title}`"
-            @click="emit('edit', item)"
-          >
-            <img
-              v-if="item.poster_path"
-              :src="`/api/shows/${item.id}/poster`"
-              :alt="item.title"
-              loading="lazy"
-            /><AppIcon v-else name="shows" :size="30" /><span
-              v-if="item.score"
-              class="show-score"
-              >★ {{ item.score }}</span
-            >
-          </button>
-          <div class="record-body">
-            <div class="record-meta">
-              <span :class="['tag', item.status]">{{
-                labels[item.status]
-              }}</span
-              ><span v-if="item.seasons">{{ item.seasons }} 季</span
-              ><span v-if="item.air_status" :class="['tag', item.air_status]">{{
-                labels[item.air_status]
-              }}</span
-              ><span v-if="item.update_weekday !== null"
-                >{{
-                  ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][
-                    item.update_weekday
-                  ]
-                }}更新</span
-              ><span class="show-kind">{{ labels[item.media_type] }}</span>
-            </div>
-            <h3>{{ item.title }}</h3>
-            <p v-if="item.notes" class="record-notes">{{ item.notes }}</p>
-            <div class="show-progress">
-              <span
-                >已看 {{ item.progress }}
-                <span class="muted">/ {{ item.total ?? "—" }} 集</span></span
-              ><button
-                class="text-button"
-                :disabled="
-                  busy || (item.total !== null && item.progress >= item.total)
-                "
-                @click="emit('action', item.id, 'advance')"
-              >
-                <AppIcon name="plus" :size="15" />看完一集
-              </button>
-            </div>
-            <div class="progress-track">
-              <span
-                :style="{
-                  width: `${item.total ? (item.progress / item.total) * 100 : 0}%`,
-                }"
-              ></span>
-            </div></div></template
         ><template
           v-if="collection === 'milestones' && 'repeats_yearly' in item"
           ><div class="milestone-top">
@@ -412,7 +321,7 @@ const dueLabel = (date: string) => {
             <p v-if="item.notes" class="record-notes">{{ item.notes }}</p>
           </div></template
         >
-        <div v-if="collection !== 'shows'" class="record-actions">
+        <div class="record-actions">
           <button
             class="icon-button"
             :aria-label="`编辑 ${item.title}`"
