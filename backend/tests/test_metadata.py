@@ -24,8 +24,9 @@ def workspace(tmp_path):
 def stub_bangumi(monkeypatch, payload=None, error=None):
     calls = {}
 
-    def fake(keyword):
+    def fake(keyword, subject_types):
         calls["keyword"] = keyword
+        calls["subject_types"] = subject_types
         if error:
             raise error
         return payload if payload is not None else []
@@ -43,7 +44,7 @@ def test_metadata_requires_authentication(tmp_path):
 def test_metadata_validates_input(workspace):
     client, headers, _ = workspace
     bad_type = client.get(
-        "/api/shows/metadata", params={"keyword": "x", "media_type": "tv"}, headers=headers
+        "/api/shows/metadata", params={"keyword": "x", "media_type": "variety"}, headers=headers
     )
     assert bad_type.status_code == 400
     blank = client.get("/api/shows/metadata", params={"keyword": "  "}, headers=headers)
@@ -71,6 +72,7 @@ def test_metadata_returns_normalized_results(workspace, monkeypatch):
     assert response.status_code == 200, response.text
     assert response.json()["results"][0]["title"] == "葬送的芙莉莲"
     assert calls["keyword"] == "芙莉莲"
+    assert calls["subject_types"] == [2]
 
 
 def test_metadata_maps_upstream_failures_to_502(workspace, monkeypatch):
@@ -88,3 +90,28 @@ def test_metadata_can_be_disabled_by_operator(workspace, monkeypatch):
     response = client.get("/api/shows/metadata", params={"keyword": "芙莉莲"}, headers=headers)
     assert response.status_code == 503
     assert "keyword" not in calls
+
+
+def test_metadata_supports_real_person_shows(workspace, monkeypatch):
+    client, headers, _ = workspace
+    calls = stub_bangumi(
+        monkeypatch,
+        payload=[
+            {
+                "source": "bangumi",
+                "source_id": 396646,
+                "title": "漫长的季节",
+                "original_title": "漫长的季节",
+                "air_date": "2023-04-22",
+                "total_episodes": 12,
+                "platform": "华语剧",
+            }
+        ],
+    )
+    response = client.get(
+        "/api/shows/metadata", params={"keyword": "漫长的季节", "media_type": "tv"}, headers=headers
+    )
+    assert response.status_code == 200, response.text
+    result = response.json()["results"][0]
+    assert result["platform"] == "华语剧"
+    assert calls["subject_types"] == [6]

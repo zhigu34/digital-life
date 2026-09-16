@@ -53,4 +53,4 @@ Backend CLI via `python -m app.cli`: `migrate`, `create-admin --username USER` (
 
 ## 追番元数据搜索（2026-09-16，可选联网功能）
 
-`GET /api/shows/metadata?keyword=1..80&media_type=anime`（登录会话）→ `{results:[{source:'bangumi',source_id,title,original_title,air_date,total_episodes}]}`，最多 8 条。仅在用户手动触发时调用 Bangumi 开放接口一次；非 anime 返回 400，关键词空白/超长 422，上游任何故障 502，`DIGITAL_LIFE_DISABLE_METADATA=true` 时 503。不落库、不自动写入；该路由注册在通用 `/api/shows/{id}` 之前。
+`GET /api/shows/metadata?keyword=1..80&media_type=anime|tv|movie`（登录会话）→ `{results:[{source:'bangumi',source_id,title,original_title,air_date,total_episodes,platform}]}`，最多 8 条；动漫走 Bangumi type 2，剧集/电影走 type 6（三次元），platform 为源站分类（华语剧/日剧/欧美剧/电影等）。仅在用户手动触发时调用一次；未知 media_type 400，关键词空白/超长 422，上游任何故障 502，`DIGITAL_LIFE_DISABLE_METADATA=true` 时 503。不落库、不自动写入；该路由注册在通用 `/api/shows/{id}` 之前。

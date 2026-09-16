@@ -22,16 +22,19 @@ interface MetadataResult {
   original_title: string | null;
   air_date: string | null;
   total_episodes: number | null;
+  platform: string | null;
 }
 const metadataResults = ref<MetadataResult[]>([]),
   metadataBusy = ref(false),
   metadataError = ref("");
 const canLookup = computed(
-  () =>
-    props.collection === "shows" &&
-    !props.item &&
-    form.media_type === "anime",
+  () => props.collection === "shows" && !props.item,
 );
+const lookupLabels: Record<string, string> = {
+  anime: "联网搜索动漫信息",
+  tv: "联网搜索剧集信息",
+  movie: "联网搜索电影信息",
+};
 async function lookupMetadata() {
   metadataError.value = "";
   metadataResults.value = [];
@@ -43,7 +46,7 @@ async function lookupMetadata() {
   metadataBusy.value = true;
   try {
     const data = await api<{ results: MetadataResult[] }>(
-      `/shows/metadata?keyword=${encodeURIComponent(keyword)}&media_type=anime`,
+      `/shows/metadata?keyword=${encodeURIComponent(keyword)}&media_type=${form.media_type}`,
     );
     metadataResults.value = data.results;
     if (!data.results.length)
@@ -291,7 +294,7 @@ function save() {
             @click="lookupMetadata"
           >
             <AppIcon :name="metadataBusy ? 'loading' : 'search'" :size="15" />{{
-              metadataBusy ? "搜索中…" : "联网搜索动漫信息"
+              metadataBusy ? "搜索中…" : lookupLabels[form.media_type]
             }}
           </button>
           <span class="field-hint">手动触发，数据来自 Bangumi 开放接口</span>
@@ -301,7 +304,7 @@ function save() {
           <ul v-if="metadataResults.length" class="metadata-results">
             <li v-for="result in metadataResults" :key="result.source_id">
               <button type="button" @click="applyMetadata(result)">
-                <strong>{{ result.title }}</strong>
+                <strong>{{ result.title }}<em v-if="result.platform">{{ result.platform }}</em></strong>
                 <span>{{
                   (result.total_episodes
                     ? `${result.total_episodes} 集`

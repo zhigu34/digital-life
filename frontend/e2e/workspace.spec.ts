@@ -294,29 +294,45 @@ test('quick notes keep private daily entries with search', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '把此刻写下来', exact: true })).toBeVisible()
 })
 
-test('anime metadata search fills title and episode count', async ({ page }) => {
+test('metadata search fills title and episode count for anime and drama', async ({ page }) => {
   await login(page, await account())
+  const fixtures: Record<string, object> = {
+    芙莉莲: {
+      results: [
+        {
+          source: 'bangumi',
+          source_id: 400602,
+          title: '葬送的芙莉莲',
+          original_title: '葬送のフリーレン',
+          air_date: '2023-09-29',
+          total_episodes: 28,
+          platform: 'TV',
+        },
+      ],
+    },
+    漫长的季节: {
+      results: [
+        {
+          source: 'bangumi',
+          source_id: 396646,
+          title: '漫长的季节',
+          original_title: '漫长的季节',
+          air_date: '2023-04-22',
+          total_episodes: 12,
+          platform: '华语剧',
+        },
+      ],
+    },
+  }
   await page.route('**/api/shows/metadata**', async (route) => {
     const url = new URL(route.request().url())
-    if (!url.searchParams.get('keyword')?.includes('芙莉莲')) {
+    const keyword = url.searchParams.get('keyword') ?? ''
+    const fixture = Object.entries(fixtures).find(([needle]) => keyword.includes(needle))
+    if (!fixture) {
       await route.fallback()
       return
     }
-    await route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({
-        results: [
-          {
-            source: 'bangumi',
-            source_id: 400602,
-            title: '葬送的芙莉莲',
-            original_title: '葬送のフリーレン',
-            air_date: '2023-09-29',
-            total_episodes: 28,
-          },
-        ],
-      }),
-    })
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify(fixture[1]) })
   })
   await navigate(page, '追剧片单')
   await page.getByRole('button', { name: '添加作品', exact: true }).first().click()
@@ -329,6 +345,16 @@ test('anime metadata search fills title and episode count', async ({ page }) => 
   await expect(dialog.getByLabel('总集数', { exact: false })).toHaveValue('28')
   await save(page)
   await expect(page.getByRole('heading', { name: '葬送的芙莉莲', exact: true })).toBeVisible()
+  // Real-person dramas use the same flow through the TV media type.
+  await page.getByRole('button', { name: '添加作品', exact: true }).first().click()
+  await dialog.getByRole('combobox', { name: '类型', exact: true }).selectOption('tv')
+  await dialog.getByLabel('名称', { exact: true }).fill('漫长的季节')
+  await dialog.getByRole('button', { name: '联网搜索剧集信息' }).click()
+  await dialog.getByRole('button', { name: /漫长的季节/ }).click()
+  await expect(dialog.getByLabel('名称', { exact: true })).toHaveValue('漫长的季节')
+  await expect(dialog.getByLabel('总集数', { exact: false })).toHaveValue('12')
+  await save(page)
+  await expect(page.getByRole('heading', { name: '漫长的季节', exact: true })).toBeVisible()
   await page.unroute('**/api/shows/metadata**')
 })
 

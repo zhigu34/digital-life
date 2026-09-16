@@ -1753,6 +1753,20 @@ input:disabled {
 .metadata-results strong {
   font-size: 12px;
 }
+.metadata-results strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.metadata-results strong em {
+  font-style: normal;
+  font-size: 9px;
+  color: var(--green);
+  background: var(--green-soft);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-weight: 500;
+}
 .metadata-results span {
   font-size: 10px;
   color: var(--muted);
