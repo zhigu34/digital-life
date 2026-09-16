@@ -45,14 +45,23 @@ def test_recurring_dates_and_inactive_payment(accounts):
     expense = alice.post(
         "/api/expenses",
         headers=ah,
-        json={"title": "月末", "amount_cents": 100, "next_due": "2027-01-31"},
+        json={
+            "title": "月末",
+            "amount_cents": 100,
+            "next_due": "2027-01-31",
+        },
     ).json()
     path = f"/api/expenses/{expense['id']}"
     assert expense["anchor_day"] == 31
     assert bob.post(path + "/pay", headers=bh).status_code == 404
     assert alice.post(path + "/pay", headers=ah).json()["next_due"] == "2027-02-28"
     assert alice.post(path + "/pay", headers=ah).json()["next_due"] == "2027-03-31"
-    assert alice.patch(path, headers=ah, json={"period_months": 12, "next_due": "2028-02-29", "anchor_day": 29}).status_code == 200
+    assert (
+        alice.patch(
+            path, headers=ah, json={"period_months": 12, "next_due": "2028-02-29", "anchor_day": 29}
+        ).status_code
+        == 200
+    )
     assert alice.post(path + "/pay", headers=ah).json()["next_due"] == "2029-02-28"
     alice.patch(path, headers=ah, json={"active": False})
     assert alice.post(path + "/pay", headers=ah).status_code == 400
@@ -100,9 +109,12 @@ def test_show_richer_metadata_and_completion_date(accounts):
     completed = alice.patch(path, headers=ah, json={"status": "completed"}).json()
     assert completed["completed_on"] is not None
     first_date = completed["completed_on"]
-    assert alice.patch(path, headers=ah, json={"title": "仍已完成"}).json()["completed_on"] == first_date
-    assert alice.patch(path, headers=ah, json={"completed_on": "2020-01-02"}).json()["completed_on"] == "2020-01-02"
-    assert alice.patch(path, headers=ah, json={"completed_on": None}).json()["completed_on"] is not None
+    unchanged = alice.patch(path, headers=ah, json={"title": "仍已完成"}).json()
+    assert unchanged["completed_on"] == first_date
+    explicit = alice.patch(path, headers=ah, json={"completed_on": "2020-01-02"}).json()
+    assert explicit["completed_on"] == "2020-01-02"
+    restored = alice.patch(path, headers=ah, json={"completed_on": None}).json()
+    assert restored["completed_on"] is not None
 
 
 @pytest.mark.parametrize(
@@ -131,7 +143,10 @@ def test_show_richer_metadata_rejects_invalid_values(accounts, payload):
         ("expenses", {"title": "x", "amount_cents": 0, "next_due": "2027-01-01"}),
         ("expenses", {"title": "x", "amount_cents": 1.2, "next_due": "2027-01-01"}),
         ("expenses", {"title": "x", "amount_cents": True, "next_due": "2027-01-01"}),
-        ("expenses", {"title": "x", "amount_cents": 1, "next_due": "2027-01-01", "period_months": 2}),
+        (
+            "expenses",
+            {"title": "x", "amount_cents": 1, "next_due": "2027-01-01", "period_months": 2},
+        ),
         ("shows", {"title": "x", "total": 2, "progress": 3}),
         ("shows", {"title": "x", "score": 11}),
         ("shows", {"title": "x", "update_weekday": 7}),
@@ -145,7 +160,11 @@ def test_invalid_record_payloads(accounts, collection, payload):
 
 def test_patch_rejects_boolean_period(accounts):
     app, admin, headers, alice, ah, bob, bh = accounts
-    expense = alice.post("/api/expenses", headers=ah, json={"title": "验证", "amount_cents": 1, "next_due": "2027-01-01"}).json()
+    expense = alice.post(
+        "/api/expenses",
+        headers=ah,
+        json={"title": "验证", "amount_cents": 1, "next_due": "2027-01-01"},
+    ).json()
     result = alice.patch(f"/api/expenses/{expense['id']}", headers=ah, json={"period_months": True})
     assert result.status_code == 422
 
@@ -154,7 +173,11 @@ def test_concurrent_progression_is_not_lost(accounts):
     from concurrent.futures import ThreadPoolExecutor
 
     app, admin, headers, alice, ah, bob, bh = accounts
-    expense = alice.post("/api/expenses", headers=ah, json={"title": "月末", "amount_cents": 1, "next_due": "2027-01-31"}).json()
+    expense = alice.post(
+        "/api/expenses",
+        headers=ah,
+        json={"title": "月末", "amount_cents": 1, "next_due": "2027-01-31"},
+    ).json()
     path = f"/api/expenses/{expense['id']}"
     with ThreadPoolExecutor(max_workers=2) as pool:
         responses = list(pool.map(lambda _: alice.post(path + "/pay", headers=ah), range(2)))
@@ -162,7 +185,15 @@ def test_concurrent_progression_is_not_lost(accounts):
     assert alice.get(path).json()["next_due"] == "2027-03-31"
 
 
-@pytest.mark.parametrize("field,value", [("progress", 2**63), ("total", 2**63), ("progress", 1_000_001), ("total", 1_000_001)])
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("progress", 2**63),
+        ("total", 2**63),
+        ("progress", 1_000_001),
+        ("total", 1_000_001),
+    ],
+)
 def test_show_episode_counts_have_explicit_storage_safe_bound(accounts, field, value):
     app, admin, headers, alice, ah, bob, bh = accounts
     result = alice.post("/api/shows", headers=ah, json={"title": "集数边界", field: value})
@@ -174,7 +205,9 @@ def test_show_episode_counts_have_explicit_storage_safe_bound(accounts, field, v
 
 def test_show_without_total_cannot_advance_beyond_episode_limit(accounts):
     app, admin, headers, alice, ah, bob, bh = accounts
-    show = alice.post("/api/shows", headers=ah, json={"title": "上界", "progress": 1_000_000}).json()
+    show = alice.post(
+        "/api/shows", headers=ah, json={"title": "上界", "progress": 1_000_000}
+    ).json()
     path = f"/api/shows/{show['id']}"
     result = alice.post(path + "/advance", headers=ah)
     assert result.status_code == 400
