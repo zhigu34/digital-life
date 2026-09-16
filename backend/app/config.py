@@ -11,6 +11,7 @@ class Settings:
     session_ttl: int = 14 * 24 * 60 * 60
     cookie_name: str = "digital_life_session"
     metadata_disabled: bool = False
+    tmdb_api_key: str = ""
 
     @property
     def database_path(self) -> Path:
@@ -36,4 +37,5 @@ class Settings:
             secure in {"true", "1"},
             origins,
             metadata_disabled=disabled in {"true", "1"},
+            tmdb_api_key=os.getenv("DIGITAL_LIFE_TMDB_API_KEY", "").strip(),
         )

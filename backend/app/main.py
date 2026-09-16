@@ -43,8 +43,13 @@ def create_app(data_dir=None):
                 )
         response = await call_next(request)
         if request.url.path.startswith("/api"):
-            response.headers["Cache-Control"] = "no-store"
-            response.headers["Vary"] = "Cookie"
+            if request.url.path.endswith("/poster"):
+                # Posters are re-fetchable cache files, not private JSON; the
+                # route itself already enforces session ownership.
+                response.headers["Cache-Control"] = "private, max-age=604800"
+            else:
+                response.headers["Cache-Control"] = "no-store"
+                response.headers["Vary"] = "Cookie"
         response.headers["X-Content-Type-Options"] = "nosniff"
         return response
 

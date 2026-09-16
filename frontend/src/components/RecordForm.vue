@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import type { Collection, RecordItem } from "../types";
 import { api } from "../api";
 import AppIcon from "./AppIcon.vue";
@@ -15,53 +15,6 @@ const emit = defineEmits<{
   close: [];
   save: [data: Record<string, unknown>];
 }>();
-interface MetadataResult {
-  source: string;
-  source_id: number;
-  title: string;
-  original_title: string | null;
-  air_date: string | null;
-  total_episodes: number | null;
-  platform: string | null;
-}
-const metadataResults = ref<MetadataResult[]>([]),
-  metadataBusy = ref(false),
-  metadataError = ref("");
-const canLookup = computed(
-  () => props.collection === "shows" && !props.item,
-);
-const lookupLabels: Record<string, string> = {
-  anime: "联网搜索动漫信息",
-  tv: "联网搜索剧集信息",
-  movie: "联网搜索电影信息",
-};
-async function lookupMetadata() {
-  metadataError.value = "";
-  metadataResults.value = [];
-  const keyword = String(form.title).trim();
-  if (!keyword) {
-    metadataError.value = "先填写名称关键词，再联网搜索";
-    return;
-  }
-  metadataBusy.value = true;
-  try {
-    const data = await api<{ results: MetadataResult[] }>(
-      `/shows/metadata?keyword=${encodeURIComponent(keyword)}&media_type=${form.media_type}`,
-    );
-    metadataResults.value = data.results;
-    if (!data.results.length)
-      metadataError.value = "没有找到相关动漫，可以直接手动填写";
-  } catch (e) {
-    metadataError.value = e instanceof Error ? e.message : "搜索失败";
-  } finally {
-    metadataBusy.value = false;
-  }
-}
-function applyMetadata(result: MetadataResult) {
-  form.title = result.title;
-  if (result.total_episodes) form.total = result.total_episodes;
-  metadataResults.value = [];
-}
 const titles = {
   tasks: "待办",
   expenses: "周期费用",
@@ -110,6 +63,79 @@ const amount = ref(
     : "",
 );
 const localError = ref("");
+interface MetadataResult {
+  source: "bangumi" | "tmdb";
+  source_id: number;
+  title: string;
+  original_title: string | null;
+  air_date: string | null;
+  total_episodes: number | null;
+  platform: string | null;
+  image: string | null;
+  seasons: number | null;
+  air_status: "airing" | "ended" | "upcoming" | "released" | null;
+}
+const metadataResults = ref<MetadataResult[]>([]),
+  metadataBusy = ref(false),
+  metadataError = ref("");
+const canLookup = computed(
+  () => props.collection === "shows" && !props.item,
+);
+const lookupLabels: Record<string, string> = {
+  anime: "联网搜索动漫信息",
+  tv: "联网搜索剧集信息",
+  movie: "联网搜索电影信息",
+};
+const airStatus: Record<string, string> = {
+  airing: "连载中",
+  ended: "已完结",
+  upcoming: "未开播",
+  released: "已上映",
+};
+// Both providers stay a free choice; the type only picks the initial default.
+const metadataSource = ref<"bangumi" | "tmdb">(
+  form.media_type === "anime" ? "bangumi" : "tmdb",
+);
+watch(
+  () => form.media_type,
+  (type) => {
+    metadataSource.value = type === "anime" ? "bangumi" : "tmdb";
+    metadataResults.value = [];
+    metadataError.value = "";
+  },
+);
+async function lookupMetadata() {
+  metadataError.value = "";
+  metadataResults.value = [];
+  const keyword = String(form.title).trim();
+  if (!keyword) {
+    metadataError.value = "先填写名称关键词，再联网搜索";
+    return;
+  }
+  metadataBusy.value = true;
+  try {
+    const data = await api<{ results: MetadataResult[] }>(
+      `/shows/metadata?keyword=${encodeURIComponent(keyword)}&media_type=${form.media_type}&source=${metadataSource.value}`,
+    );
+    metadataResults.value = data.results;
+    if (!data.results.length)
+      metadataError.value = "没有找到相关作品，可以直接手动填写";
+  } catch (e) {
+    metadataError.value = e instanceof Error ? e.message : "搜索失败";
+  } finally {
+    metadataBusy.value = false;
+  }
+}
+function applyMetadata(result: MetadataResult) {
+  form.title = result.title;
+  if (result.total_episodes) form.total = result.total_episodes;
+  form.source = result.source;
+  form.source_id = result.source_id;
+  form.poster_path = result.image ?? "";
+  form.seasons = result.seasons ?? "";
+  form.air_status = result.air_status ?? "";
+  metadataResults.value = [];
+}
 function save() {
   localError.value = "";
   const data = { ...form };
@@ -122,9 +148,11 @@ function save() {
     data.anchor_day = Number(data.anchor_day);
   }
   if (props.collection === "shows") {
-    for (const key of ["total", "score", "update_weekday"])
+    for (const key of ["total", "score", "update_weekday", "seasons", "source_id"])
       data[key] =
         data[key] === "" || data[key] === null ? null : Number(data[key]);
+    for (const key of ["source", "air_status", "poster_path"])
+      data[key] = data[key] === "" || data[key] === null ? null : data[key];
     data.progress = Number(data.progress);
     if (data.total !== null && data.progress > data.total) {
       localError.value = "已看进度不能大于总集数";
@@ -287,30 +315,64 @@ function save() {
           >
         </div>
         <div v-if="canLookup" class="metadata-lookup">
-          <button
-            type="button"
-            class="text-button"
-            :disabled="metadataBusy"
-            @click="lookupMetadata"
+          <div class="metadata-toolbar">
+            <div class="tabs metadata-source" aria-label="信息源">
+              <button
+                type="button"
+                :class="{ active: metadataSource === 'bangumi' }"
+                @click="metadataSource = 'bangumi'"
+              >
+                Bangumi
+              </button>
+              <button
+                type="button"
+                :class="{ active: metadataSource === 'tmdb' }"
+                @click="metadataSource = 'tmdb'"
+              >
+                TMDB
+              </button>
+            </div>
+            <button
+              type="button"
+              class="text-button"
+              :disabled="metadataBusy"
+              @click="lookupMetadata"
+            >
+              <AppIcon :name="metadataBusy ? 'loading' : 'search'" :size="15" />{{
+                metadataBusy ? "搜索中…" : lookupLabels[form.media_type]
+              }}
+            </button>
+          </div>
+          <span class="field-hint"
+            >手动触发；TMDB 需在 .env 配置 DIGITAL_LIFE_TMDB_API_KEY</span
           >
-            <AppIcon :name="metadataBusy ? 'loading' : 'search'" :size="15" />{{
-              metadataBusy ? "搜索中…" : lookupLabels[form.media_type]
-            }}
-          </button>
-          <span class="field-hint">手动触发，数据来自 Bangumi 开放接口</span>
           <p v-if="metadataError" class="field-hint" role="alert">
             {{ metadataError }}
           </p>
           <ul v-if="metadataResults.length" class="metadata-results">
             <li v-for="result in metadataResults" :key="result.source_id">
               <button type="button" @click="applyMetadata(result)">
-                <strong>{{ result.title }}<em v-if="result.platform">{{ result.platform }}</em></strong>
-                <span>{{
-                  (result.total_episodes
-                    ? `${result.total_episodes} 集`
-                    : "集数未知") +
-                  (result.air_date ? ` · ${result.air_date}` : "")
-                }}</span>
+                <img
+                  v-if="result.image"
+                  :src="result.image"
+                  alt=""
+                  loading="lazy"
+                  @error="(event) => ((event.target as HTMLImageElement).style.display = 'none')"
+                />
+                <div class="metadata-main">
+                  <strong>{{ result.title }}</strong>
+                  <span class="metadata-tags">
+                    <em v-if="result.platform">{{ result.platform }}</em>
+                    <em v-if="result.seasons">{{ result.seasons }} 季</em>
+                    <em v-if="result.air_status">{{ airStatus[result.air_status] }}</em>
+                  </span>
+                  <span>{{
+                    (result.total_episodes
+                      ? `${result.total_episodes} 集`
+                      : "集数未知") +
+                    (result.air_date ? ` · ${result.air_date}` : "")
+                  }}</span>
+                </div>
               </button>
             </li>
           </ul>

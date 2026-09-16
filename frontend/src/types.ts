@@ -38,6 +38,11 @@ export interface Show {
   score: number | null;
   notes: string;
   update_weekday: number | null;
+  source: "bangumi" | "tmdb" | null;
+  source_id: number | null;
+  poster_path: string | null;
+  seasons: number | null;
+  air_status: "airing" | "ended" | "upcoming" | "released" | null;
 }
 export interface Milestone {
   id: number;

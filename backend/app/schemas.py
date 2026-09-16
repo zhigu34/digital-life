@@ -161,6 +161,11 @@ class ShowPayload(Payload):
     score: Annotated[StrictInt, Field(ge=1, le=10)] | None = None
     notes: Notes = ""
     update_weekday: Annotated[StrictInt, Field(ge=0, le=6)] | None = None
+    source: Literal["bangumi", "tmdb"] | None = None
+    source_id: StrictInt | None = Field(default=None, ge=1, le=2**63 - 1)
+    poster_path: Annotated[str, Field(max_length=500)] | None = None
+    seasons: StrictInt | None = Field(default=None, ge=1, le=1000)
+    air_status: Literal["airing", "ended", "upcoming", "released"] | None = None
 
     @model_validator(mode="after")
     def progress_within_total(self):

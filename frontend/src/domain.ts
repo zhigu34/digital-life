@@ -117,4 +117,8 @@ export const labels: Record<string, string> = {
   low: "低优先",
   normal: "普通",
   high: "高优先",
+  airing: "连载中",
+  ended: "已完结",
+  upcoming: "未开播",
+  released: "已上映",
 };

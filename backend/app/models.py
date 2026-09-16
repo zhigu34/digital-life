@@ -66,6 +66,11 @@ class Show(Owned, Base):
     score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     notes: Mapped[str] = mapped_column(Text, default="")
     update_weekday: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    source_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    poster_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    seasons: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    air_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
 
 class Milestone(Owned, Base):

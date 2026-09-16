@@ -1,30 +1,58 @@
-"""Optional, manually-triggered show metadata lookup via the public Bangumi API.
+"""Optional, manually-triggered show metadata lookup (Bangumi / TMDB).
 
 The workspace itself never requires internet access: this module only runs when
 the user explicitly clicks search in the show form, and operators can turn it
-off entirely with DIGITAL_LIFE_DISABLE_METADATA=true.
+off entirely with DIGITAL_LIFE_DISABLE_METADATA=true. TMDB lookups additionally
+need an operator-provided DIGITAL_LIFE_TMDB_API_KEY; without it drama and film
+searches keep using Bangumi.
 """
 
+from urllib.parse import urlparse
+
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from sqlalchemy.orm import Session
 
 from app.auth import Identity, authenticated
+from app.database import get_db
+from app.models import Show
+from app.records import owned
+from app.schemas import ResourceId
 
 router = APIRouter(prefix="/api/shows", tags=["metadata"])
 BANGUMI_API = "https://api.bgm.tv"
+TMDB_API = "https://api.themoviedb.org/3"
+TMDB_IMAGE = "https://image.tmdb.org/t/p/w342"
 USER_AGENT = "zhigu34-digital-life (self-hosted; no automated crawling)"
 TIMEOUT_SECONDS = 8.0
 MAX_RESULTS = 8
+TMDB_DETAIL_RESULTS = 6
 # Bangumi subject types: 2 = anime, 6 = real-person shows (drama and film).
 SUBJECT_TYPES = {"anime": [2], "tv": [6], "movie": [6]}
+# TMDB catalogues animation as ordinary TV shows.
+TMDB_KIND = {"anime": "tv", "tv": "tv", "movie": "movie"}
+TMDB_TV_STATUS = {
+    "Returning Series": "airing",
+    "Ended": "ended",
+    "Canceled": "ended",
+    "In Production": "upcoming",
+    "Pilot": "upcoming",
+}
+TMDB_MOVIE_STATUS = {"Released": "released"}
+# Poster downloads are proxied through the backend so browsers never need
+# outbound access; only these image hosts may be fetched.
+POSTER_HOSTS = {"image.tmdb.org", "lain.bgm.tv"}
+MAX_POSTER_BYTES = 5_000_000
+
+
+def _client() -> httpx.Client:
+    # Honors standard proxy environment variables so hosts behind an outbound
+    # proxy can still reach the APIs; hosts without one connect directly.
+    return httpx.Client(headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT_SECONDS)
 
 
 def search_bangumi(keyword: str, subject_types: list[int]) -> list[dict]:
-    # Honors standard proxy environment variables so hosts behind an outbound
-    # proxy can still reach the API; hosts without one connect directly.
-    with httpx.Client(
-        headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT_SECONDS
-    ) as client:
+    with _client() as client:
         response = client.post(
             f"{BANGUMI_API}/v0/search/subjects",
             json={
@@ -37,6 +65,7 @@ def search_bangumi(keyword: str, subject_types: list[int]) -> list[dict]:
     results = []
     for item in response.json().get("data", []):
         episodes = item.get("total_episodes") or item.get("eps") or 0
+        images = item.get("images") or {}
         results.append(
             {
                 "source": "bangumi",
@@ -46,9 +75,73 @@ def search_bangumi(keyword: str, subject_types: list[int]) -> list[dict]:
                 "air_date": item.get("date"),
                 "total_episodes": episodes or None,
                 "platform": item.get("platform"),
+                "image": images.get("common") or images.get("large"),
+                "seasons": None,
+                "air_status": None,
             }
         )
     return results
+
+
+def search_tmdb(keyword: str, kind: str, api_key: str) -> list[dict]:
+    with _client() as client:
+        search = client.get(
+            f"{TMDB_API}/search/{kind}",
+            params={
+                "api_key": api_key,
+                "query": keyword,
+                "language": "zh-CN",
+                "include_adult": "false",
+            },
+        )
+        search.raise_for_status()
+        results = []
+        for item in search.json().get("results", [])[:TMDB_DETAIL_RESULTS]:
+            entry = {
+                "source": "tmdb",
+                "source_id": item.get("id"),
+                "title": item.get("name") or item.get("title") or keyword,
+                "original_title": item.get("original_name") or item.get("original_title"),
+                "air_date": item.get("first_air_date") or item.get("release_date"),
+                "poster": item.get("poster_path"),
+            }
+            # Season and airing status live on the detail endpoint; a failing
+            # detail lookup only degrades that one candidate.
+            try:
+                detail = client.get(
+                    f"{TMDB_API}/{kind}/{item['id']}",
+                    params={"api_key": api_key, "language": "zh-CN"},
+                )
+                detail.raise_for_status()
+                detail = detail.json()
+            except httpx.HTTPError:
+                detail = {}
+            if kind == "tv":
+                entry.update(
+                    {
+                        "total_episodes": detail.get("number_of_episodes") or None,
+                        "seasons": detail.get("number_of_seasons") or None,
+                        "air_status": TMDB_TV_STATUS.get(detail.get("status", "")),
+                        "platform": None,
+                    }
+                )
+            else:
+                entry.update(
+                    {
+                        "total_episodes": 1,
+                        "seasons": None,
+                        "air_status": TMDB_MOVIE_STATUS.get(
+                            detail.get("status", ""), "upcoming"
+                        )
+                        if detail
+                        else None,
+                        "platform": None,
+                    }
+                )
+            poster = entry.pop("poster", None)
+            entry["image"] = f"{TMDB_IMAGE}{poster}" if poster else None
+            results.append(entry)
+        return results
 
 
 @router.get("/metadata")
@@ -56,21 +149,86 @@ def lookup_metadata(
     request: Request,
     keyword: str,
     media_type: str = "anime",
+    source: str = "bangumi",
     identity: Identity = Depends(authenticated),
 ):
-    if request.app.state.settings.metadata_disabled:
+    settings = request.app.state.settings
+    if settings.metadata_disabled:
         raise HTTPException(503, "元数据获取未启用（DIGITAL_LIFE_DISABLE_METADATA）")
-    subject_types = SUBJECT_TYPES.get(media_type)
-    if subject_types is None:
+    if media_type not in SUBJECT_TYPES:
         raise HTTPException(400, "不支持的作品类型")
+    if source not in {"bangumi", "tmdb"}:
+        raise HTTPException(400, "未知信息源")
+    if source == "tmdb" and not settings.tmdb_api_key:
+        raise HTTPException(400, "未配置 DIGITAL_LIFE_TMDB_API_KEY，无法使用 TMDB")
     keyword = keyword.strip()
     if not 1 <= len(keyword) <= 80:
         raise HTTPException(422, "搜索关键词需要 1–80 个字符")
     try:
-        return {"results": search_bangumi(keyword, subject_types)}
+        if source == "tmdb":
+            results = search_tmdb(keyword, TMDB_KIND[media_type], settings.tmdb_api_key)
+        else:
+            results = search_bangumi(keyword, SUBJECT_TYPES[media_type])
+        return {"results": results}
     except HTTPException:
         raise
     except Exception:
         # Any outbound failure (DNS, proxy, TLS, upstream status) is simply an
         # unavailable optional service; it must never surface as a 500.
-        raise HTTPException(502, "暂时无法连接信息源（Bangumi），请稍后再试") from None
+        raise HTTPException(502, "暂时无法连接信息源（Bangumi/TMDB），请稍后再试") from None
+
+
+def fetch_image(url: str) -> tuple[bytes, str]:
+    with _client() as client:
+        response = client.get(url, follow_redirects=True)
+    response.raise_for_status()
+    content = response.content
+    content_type = response.headers.get("content-type", "").split(";")[0].strip().lower()
+    if len(content) > MAX_POSTER_BYTES:
+        raise ValueError("poster too large")
+    if content_type not in {"image/jpeg", "image/png", "image/webp"}:
+        raise ValueError("unexpected poster content type")
+    return content, content_type
+
+
+def sniff_image(content: bytes) -> str:
+    if content.startswith(b"\x89PNG"):
+        return "image/png"
+    if content.startswith(b"RIFF") and content[8:12] == b"WEBP":
+        return "image/webp"
+    return "image/jpeg"
+
+
+@router.get("/{item_id}/poster")
+def show_poster(
+    item_id: ResourceId,
+    request: Request,
+    identity: Identity = Depends(authenticated),
+    db: Session = Depends(get_db),
+):
+    show = owned(db, Show, item_id, identity.user.id)
+    if not show.poster_path:
+        raise HTTPException(404, "该记录没有封面")
+    host = urlparse(show.poster_path).hostname or ""
+    if host not in POSTER_HOSTS:
+        raise HTTPException(400, "封面来源不受支持")
+    settings = request.app.state.settings
+    cache_dir = settings.data_dir / "posters"
+    cached = cache_dir / f"{show.id}.img"
+    if not cached.is_file():
+        try:
+            content, content_type = fetch_image(show.poster_path)
+        except ValueError:
+            raise HTTPException(502, "封面文件无效") from None
+        except Exception:
+            raise HTTPException(502, "暂时无法获取封面，请稍后再试") from None
+        cache_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        staged = cache_dir / f".{show.id}.tmp"
+        staged.write_bytes(content)
+        staged.replace(cached)
+    content = cached.read_bytes()
+    return Response(
+        content,
+        media_type=sniff_image(content),
+        headers={"Cache-Control": "private, max-age=604800"},
+    )

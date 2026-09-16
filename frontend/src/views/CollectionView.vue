@@ -323,9 +323,15 @@ const dueLabel = (date: string) => {
             </button></div></template
         ><template v-if="collection === 'shows' && 'progress' in item"
           ><div class="show-cover" :class="item.media_type">
-            <AppIcon name="shows" :size="42" /><span>{{
-              labels[item.media_type]
-            }}</span
+            <img
+              v-if="item.poster_path"
+              :src="`/api/shows/${item.id}/poster`"
+              :alt="item.title"
+              loading="lazy"
+            /><template v-else>
+              <AppIcon name="shows" :size="42" /><span>{{
+                labels[item.media_type]
+              }}</span></template
             ><span v-if="item.score" class="show-score"
               >★ {{ item.score }}</span
             >
@@ -334,6 +340,10 @@ const dueLabel = (date: string) => {
             <div class="record-meta">
               <span :class="['tag', item.status]">{{
                 labels[item.status]
+              }}</span
+              ><span v-if="item.seasons">{{ item.seasons }} 季</span
+              ><span v-if="item.air_status" :class="['tag', item.air_status]">{{
+                labels[item.air_status]
               }}</span
               ><span v-if="item.update_weekday !== null"
                 >{{

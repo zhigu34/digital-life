@@ -307,25 +307,33 @@ test('metadata search fills title and episode count for anime and drama', async 
           air_date: '2023-09-29',
           total_episodes: 28,
           platform: 'TV',
+          image: null,
+          seasons: null,
+          air_status: null,
         },
       ],
     },
     漫长的季节: {
       results: [
         {
-          source: 'bangumi',
-          source_id: 396646,
+          source: 'tmdb',
+          source_id: 94997,
           title: '漫长的季节',
-          original_title: '漫长的季节',
+          original_title: 'The Long Season',
           air_date: '2023-04-22',
           total_episodes: 12,
-          platform: '华语剧',
+          platform: null,
+          image: 'https://image.tmdb.org/t/p/w342/abc.jpg',
+          seasons: 1,
+          air_status: 'ended',
         },
       ],
     },
   }
+  const requestedSources: string[] = []
   await page.route('**/api/shows/metadata**', async (route) => {
     const url = new URL(route.request().url())
+    requestedSources.push(`${url.searchParams.get('keyword')}@${url.searchParams.get('source')}`)
     const keyword = url.searchParams.get('keyword') ?? ''
     const fixture = Object.entries(fixtures).find(([needle]) => keyword.includes(needle))
     if (!fixture) {
@@ -333,6 +341,13 @@ test('metadata search fills title and episode count for anime and drama', async 
       return
     }
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify(fixture[1]) })
+  })
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64',
+  )
+  await page.route('**/api/shows/*/poster', async (route) => {
+    await route.fulfill({ contentType: 'image/png', body: png })
   })
   await navigate(page, '追剧片单')
   await page.getByRole('button', { name: '添加作品', exact: true }).first().click()
@@ -349,13 +364,21 @@ test('metadata search fills title and episode count for anime and drama', async 
   await page.getByRole('button', { name: '添加作品', exact: true }).first().click()
   await dialog.getByRole('combobox', { name: '类型', exact: true }).selectOption('tv')
   await dialog.getByLabel('名称', { exact: true }).fill('漫长的季节')
+  await dialog.getByRole('button', { name: 'TMDB', exact: true }).click()
   await dialog.getByRole('button', { name: '联网搜索剧集信息' }).click()
   await dialog.getByRole('button', { name: /漫长的季节/ }).click()
   await expect(dialog.getByLabel('名称', { exact: true })).toHaveValue('漫长的季节')
   await expect(dialog.getByLabel('总集数', { exact: false })).toHaveValue('12')
   await save(page)
-  await expect(page.getByRole('heading', { name: '漫长的季节', exact: true })).toBeVisible()
+  const card = page.locator('article').filter({ hasText: '漫长的季节' })
+  await expect(card).toBeVisible()
+  await expect(card).toContainText('1 季')
+  await expect(card).toContainText('已完结')
+  await expect(card.locator('.show-cover img')).toHaveAttribute('alt', '漫长的季节')
+  expect(requestedSources).toContain('芙莉莲@bangumi')
+  expect(requestedSources).toContain('漫长的季节@tmdb')
   await page.unroute('**/api/shows/metadata**')
+  await page.unroute('**/api/shows/*/poster')
 })
 
 test('recurring maintenance tracks completion, corrections, reminders and private history', async ({ page }, testInfo) => {

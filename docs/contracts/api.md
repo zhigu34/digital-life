@@ -53,4 +53,6 @@ Backend CLI via `python -m app.cli`: `migrate`, `create-admin --username USER` (
 
 ## 追番元数据搜索（2026-09-16，可选联网功能）
 
-`GET /api/shows/metadata?keyword=1..80&media_type=anime|tv|movie`（登录会话）→ `{results:[{source:'bangumi',source_id,title,original_title,air_date,total_episodes,platform}]}`，最多 8 条；动漫走 Bangumi type 2，剧集/电影走 type 6（三次元），platform 为源站分类（华语剧/日剧/欧美剧/电影等）。仅在用户手动触发时调用一次；未知 media_type 400，关键词空白/超长 422，上游任何故障 502，`DIGITAL_LIFE_DISABLE_METADATA=true` 时 503。不落库、不自动写入；该路由注册在通用 `/api/shows/{id}` 之前。
+`GET /api/shows/metadata?keyword=1..80&media_type=anime|tv|movie&source=bangumi|tmdb`（登录会话）→ `{results:[{source,source_id,title,original_title,air_date,total_episodes,platform,image,seasons,air_status}]}`，最多 8 条。数据源由前端显式选择：bangumi（type 2 动画 / type 6 三次元，image 来自 lain.bgm.tv）或 tmdb（需 `DIGITAL_LIFE_TMDB_API_KEY`，逐候选拉取详情获得 seasons 与 air_status：airing/ended/upcoming/released，image 来自 image.tmdb.org）。仅在用户手动触发时调用一次；未知 media_type/source 400、TMDB 未配置 key 400、关键词空白/超长 422、上游任何故障 502、功能禁用 503。
+
+`GET /api/shows/{id}/poster`（登录会话）返回该条目的封面图片：后端仅从 image.tmdb.org / lain.bgm.tv 白名单主机下载（上限 5MB，JPEG/PNG/WebP），按账号归属校验，缓存于数据目录 `posters/`，响应 `Cache-Control: private, max-age=604800`；无封面 404、来源不授信 400、下载失败 502。Show 记录新增可选字段 `source/source_id/poster_path/seasons/air_status`（Alembic `0004`），导出/导入完整支持。不落库、不自动写入；该路由注册在通用 `/api/shows/{id}` 之前。
