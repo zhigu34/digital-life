@@ -1,6 +1,7 @@
 import type { Show } from "./types";
 
 export type ShowFilter = "all" | Show["status"];
+export type ShowTypeGroup = { type: Show["media_type"]; items: Show[] };
 
 export function filterShows(
   shows: Show[],
@@ -13,6 +14,13 @@ export function filterShows(
       item.title.toLowerCase().includes(needle) &&
       (filter === "all" || item.status === filter),
   );
+}
+
+export function groupShowsByType(shows: Show[]): ShowTypeGroup[] {
+  const order: Show["media_type"][] = ["tv", "anime", "movie"];
+  return order
+    .map((type) => ({ type, items: shows.filter((item) => item.media_type === type) }))
+    .filter((group) => group.items.length > 0);
 }
 
 export function showProgressPercent(
@@ -42,17 +50,22 @@ export interface ShowFormDraft {
   update_weekday: number | string | null;
   source?: Show["source"] | "";
   source_id?: number | string | null;
+  source_url?: string | null;
   poster_path?: string | null;
   seasons?: number | string | null;
   air_status?: Show["air_status"] | "";
+  release_year?: number | string | null;
+  completed_on?: string | null;
 }
 
 export interface ShowMetadataResult {
   source: "bangumi" | "tmdb";
   source_id: number;
+  source_url: string | null;
   title: string;
   original_title: string | null;
   air_date: string | null;
+  release_year: number | null;
   total_episodes: number | null;
   platform: string | null;
   image: string | null;
@@ -62,7 +75,15 @@ export interface ShowMetadataResult {
 
 export type ShowMetadataPatch = Pick<
   ShowFormDraft,
-  "title" | "total" | "source" | "source_id" | "poster_path" | "seasons" | "air_status"
+  | "title"
+  | "total"
+  | "source"
+  | "source_id"
+  | "source_url"
+  | "poster_path"
+  | "seasons"
+  | "air_status"
+  | "release_year"
 >;
 
 export type NormalizeShowResult =
@@ -95,9 +116,12 @@ export function normalizeShowPayload(
     update_weekday: numberOrNull(draft.update_weekday),
     source: stringOrNull(draft.source),
     source_id: numberOrNull(draft.source_id),
+    source_url: stringOrNull(draft.source_url),
     poster_path: stringOrNull(draft.poster_path),
     seasons: numberOrNull(draft.seasons),
     air_status: stringOrNull(draft.air_status),
+    release_year: numberOrNull(draft.release_year),
+    completed_on: stringOrNull(draft.completed_on),
   };
 
   if (data.total !== null && data.progress > data.total) {
@@ -112,9 +136,11 @@ export function showMetadataPatch(result: ShowMetadataResult): ShowMetadataPatch
     total: result.total_episodes ?? "",
     source: result.source,
     source_id: result.source_id,
+    source_url: result.source_url ?? "",
     poster_path: result.image ?? "",
     seasons: result.seasons ?? "",
     air_status: result.air_status ?? "",
+    release_year: result.release_year ?? "",
   };
 }
 
