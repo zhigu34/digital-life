@@ -135,7 +135,7 @@ function save() {
     localError.value = result.error;
     return;
   }
-  emit("save", result.data);
+  emit("save", { ...result.data });
 }
 </script>
 
