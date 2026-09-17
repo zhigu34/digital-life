@@ -1,3 +1,5 @@
+"""Business rules shared by the dedicated Shows endpoints."""
+
 from datetime import UTC, date, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
