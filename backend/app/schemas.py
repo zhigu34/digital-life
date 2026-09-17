@@ -1,5 +1,6 @@
 import re
 from datetime import date, datetime
+from importlib import import_module
 from typing import Annotated, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -160,12 +161,11 @@ class ExpenseView(ExpensePayload):
 
 
 # Compatibility exports: Shows schemas are physically owned by app.shows.schemas.
-from app.shows.schemas import (  # noqa: E402
-    MAX_EPISODES as MAX_EPISODES,
-    ShowPatch as ShowPatch,
-    ShowPayload as ShowPayload,
-    ShowView as ShowView,
-)
+_show_schemas = import_module("app.shows.schemas")
+MAX_EPISODES = _show_schemas.MAX_EPISODES
+ShowPatch = _show_schemas.ShowPatch
+ShowPayload = _show_schemas.ShowPayload
+ShowView = _show_schemas.ShowView
 
 
 class MilestonePayload(Payload):
