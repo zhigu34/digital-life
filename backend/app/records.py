@@ -1,6 +1,5 @@
 import calendar
 from datetime import UTC, date, datetime
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -22,7 +21,6 @@ from app.models import (
     Task,
 )
 from app.schemas import (
-    MAX_EPISODES,
     ExpensePatch,
     ExpensePayload,
     ExpenseView,
@@ -36,8 +34,6 @@ from app.schemas import (
     ProjectPayload,
     ProjectView,
     ResourceId,
-    ShowPatch,
-    ShowPayload,
     ShowView,
     TaskPatch,
     TaskPayload,
@@ -49,7 +45,6 @@ router = APIRouter(prefix="/api", tags=["records"])
 COLLECTIONS = {
     "tasks": (Task, TaskPayload, TaskPatch, TaskView),
     "expenses": (Expense, ExpensePayload, ExpensePatch, ExpenseView),
-    "shows": (Show, ShowPayload, ShowPatch, ShowView),
     "milestones": (Milestone, MilestonePayload, MilestonePatch, MilestoneView),
     "notes": (Note, NotePayload, NotePatch, NoteView),
     "projects": (Project, ProjectPayload, ProjectPatch, ProjectView),
@@ -61,24 +56,6 @@ def owned(db, model, item_id, user_id):
     if record is None:
         raise HTTPException(404, "记录不存在")
     return record
-
-
-def user_today(timezone: str, now: datetime | None = None) -> date:
-    instant = now or datetime.now(UTC)
-    try:
-        zone = ZoneInfo(timezone)
-    except (ZoneInfoNotFoundError, ValueError):
-        zone = UTC
-    return instant.astimezone(zone).date()
-
-
-def set_show_completion_date(values, timezone: str, previous_status: str | None = None):
-    if (
-        values["status"] == "completed"
-        and previous_status != "completed"
-        and values["completed_on"] is None
-    ):
-        values["completed_on"] = user_today(timezone)
 
 
 def register_collection(name, model, create_schema, patch_schema, view):
@@ -102,8 +79,6 @@ def register_collection(name, model, create_schema, patch_schema, view):
         values = payload.model_dump()
         if model in (Task, Note, Project):
             values["created_at"] = datetime.now(UTC).replace(tzinfo=None)
-        if model is Show:
-            set_show_completion_date(values, identity.user.timezone)
         item = model(user_id=identity.user.id, **values)
         db.add(item)
         db.commit()
@@ -117,8 +92,6 @@ def register_collection(name, model, create_schema, patch_schema, view):
     ):
         item = owned(db, model, item_id, identity.user.id)
         values = validated_patch(create_schema, item, payload).model_dump()
-        if model is Show:
-            set_show_completion_date(values, identity.user.timezone, item.status)
         for key, value in values.items():
             setattr(item, key, value)
         db.commit()
@@ -188,22 +161,6 @@ def pay_expense(
     return expense
 
 
-@router.post("/shows/{item_id}/advance", response_model=ShowView)
-def advance_show(
-    item_id: ResourceId, identity: Identity = Depends(authenticated), db: Session = Depends(get_db)
-):
-    show = owned(db, Show, item_id, identity.user.id)
-    if show.total is None or show.progress < show.total:
-        if show.progress >= MAX_EPISODES:
-            raise HTTPException(400, "集数已达到支持的上限（1,000,000）")
-        show.progress += 1
-        show.status = "completed" if show.progress == show.total else "watching"
-        if show.status == "completed" and show.completed_on is None:
-            show.completed_on = user_today(identity.user.timezone)
-    db.commit()
-    return show
-
-
 @router.get("/export")
 def export_data(identity: Identity = Depends(authenticated), db: Session = Depends(get_db)):
     data = {"user": UserView.model_validate(identity.user)}
@@ -214,6 +171,12 @@ def export_data(identity: Identity = Depends(authenticated), db: Session = Depen
                 select(model).where(model.user_id == identity.user.id).order_by(model.id)
             )
         ]
+    data["shows"] = [
+        ShowView.model_validate(row)
+        for row in db.scalars(
+            select(Show).where(Show.user_id == identity.user.id).order_by(Show.id)
+        )
+    ]
     data["maintenance"] = [
         MaintenanceView.model_validate(row)
         for row in db.scalars(
