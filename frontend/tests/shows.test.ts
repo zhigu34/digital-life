@@ -27,7 +27,6 @@ const makeShow = (overrides: Partial<Show> = {}): Show => ({
   air_status: "ended",
   release_year: 2023,
   completed_on: null,
-  created_at: "2026-09-17T00:00:00Z",
   ...overrides,
 });
 
