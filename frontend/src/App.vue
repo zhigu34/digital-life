@@ -72,7 +72,7 @@ onUnmounted(()=>{media.removeEventListener("change",theme);clearInterval(clockTi
     </main>
     <nav class="mobile-nav" aria-label="移动端主导航"><button v-for="id in mobilePrimary" :key="id" :class="{active:page===id}" @click="navigate(id)"><AppIcon :name="id" :size="20" /><span>{{mobileNavLabels[id]}}</span></button><button :class="{active:secondaryPages.includes(page)}" @click="moreOpen=!moreOpen"><AppIcon name="more" :size="20" /><span>更多</span></button></nav>
     <div v-if="moreOpen" class="mobile-more"><button v-for="id in secondaryPages" :key="id" :class="{active:page===id}" @click="navigate(id)"><AppIcon :name="id" :size="19" />{{mobileNavLabels[id]}}</button></div>
-    <RecordForm v-if="editing" :collection="editing.collection" :item="editing.item" :busy="busy" :error="formError" @close="editing=null" @save="save" />
+    <RecordForm v-if="editing" :collection="editing.collection" :item="editing.item" :today="today" :busy="busy" :error="formError" @close="editing=null" @save="save" />
     <transition name="toast"><div v-if="notice" class="toast" role="status"><AppIcon name="check" :size="17" />{{notice}}</div></transition>
   </div>
 </template>
