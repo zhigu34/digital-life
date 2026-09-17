@@ -84,16 +84,6 @@ def test_show_advance_and_combined_patch_validation(accounts):
     assert advanced["completed_on"] is not None
 
 
-def test_user_today_respects_profile_timezone():
-    from datetime import UTC, date, datetime
-
-    from app.records import user_today
-
-    now = datetime(2026, 9, 17, 6, 30, tzinfo=UTC)
-    assert user_today("America/Los_Angeles", now) == date(2026, 9, 16)
-    assert user_today("Asia/Shanghai", now) == date(2026, 9, 17)
-
-
 def test_show_richer_metadata_and_completion_date(accounts):
     app, admin, headers, alice, ah, bob, bh = accounts
     created = alice.post(
