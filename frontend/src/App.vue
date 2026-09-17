@@ -70,9 +70,10 @@ onUnmounted(()=>{media.removeEventListener("change",theme);clearInterval(clockTi
       <ProfileView v-else-if="page==='profile'" :user="user" :busy="busy" @profile="profile" @password="password" @export="exportData" @import="importData" @logout="logout" />
       <AdminView v-else-if="page==='admin'&&user.is_admin" :user="user" @error="handleError" @notice="notify" />
     </main>
-    <nav class="mobile-nav" aria-label="移动端主导航"><button v-for="id in mobilePrimary" :key="id" :class="{active:page===id}" @click="navigate(id)"><AppIcon :name="id" :size="20" /><span>{{mobileNavLabels[id]}}</span></button><button :class="{active:secondaryPages.includes(page)}" @click="moreOpen=!moreOpen"><AppIcon name="more" :size="20" /><span>更多</span></button></nav>
-    <div v-if="moreOpen" class="mobile-more"><button v-for="id in secondaryPages" :key="id" :class="{active:page===id}" @click="navigate(id)"><AppIcon :name="id" :size="19" />{{mobileNavLabels[id]}}</button></div>
-    <RecordForm v-if="editing" :collection="editing.collection" :item="editing.item" :today="today" :busy="busy" :error="formError" @close="editing=null" @save="save" />
-    <transition name="toast"><div v-if="notice" class="toast" role="status"><AppIcon name="check" :size="17" />{{notice}}</div></transition>
+    <nav class="mobile-nav" aria-label="移动端导航"><button v-for="id in mobilePrimary" :key="id" :aria-label="id === 'today' ? '今日总览' : pageLabels[id]" :class="{active:page===id}" @click="navigate(id)"><AppIcon :name="id" :size="21" /><span>{{mobileNavLabels[id]}}</span></button><button :class="{active:moreOpen||secondaryPages.includes(page)}" :aria-expanded="moreOpen" aria-label="更多页面" @click="moreOpen=!moreOpen"><AppIcon name="menu" :size="21" /><span>更多</span></button></nav>
+    <div v-if="moreOpen" class="mobile-more-backdrop" aria-label="关闭更多菜单" @click="moreOpen=false"></div>
+    <nav v-if="moreOpen" class="mobile-more-sheet" aria-label="更多页面"><button v-for="id in secondaryPages" :key="id" :class="{active:page===id}" @click="navigate(id)"><AppIcon :name="id" :size="19" /><span>{{pageLabels[id]}}</span></button><button v-if="user.is_admin" :class="{active:page==='admin'}" @click="navigate('admin')"><AppIcon name="admin" :size="19" /><span>账户管理</span></button><button :class="{active:page==='profile'}" @click="navigate('profile')"><AppIcon name="profile" :size="19" /><span>个人设置</span></button></nav>
+    <RecordForm v-if="editing" :key="`${editing.collection}-${editing.item?.id ?? 'new'}`" :collection="editing.collection" :item="editing.item" :today="today" :busy="busy" :error="formError" @close="editing=null" @save="save" @remove="(item)=>remove(editing!.collection,item)" />
+    <Transition name="toast"><div v-if="notice" class="toast" role="status"><AppIcon name="check" :size="18" />{{notice}}</div></Transition>
   </div>
 </template>
