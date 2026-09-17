@@ -17,7 +17,7 @@ from app.models import Base, User
 from app.schemas import UserCreate
 from app.security import hash_password
 
-SCHEMA_REVISION = "0006"
+SCHEMA_REVISION = "0007"
 
 
 def create_admin(settings: Settings, username: str, password: str):
@@ -89,8 +89,6 @@ def validate_database(path: Path):
                     raise ValueError(f"Backup ownership constraint missing in table {name}")
                 unique_keys = set()
                 for index in db.execute(f'PRAGMA index_list("{name}")').fetchall():
-                    # A partial unique index only applies to rows matching its
-                    # WHERE clause, so it cannot satisfy a table-wide invariant.
                     if index[2] and not index[4]:
                         index_name = index[1].replace('"', '""')
                         unique_keys.add(
@@ -117,7 +115,6 @@ def _staged_snapshot(source: Path, destination_dir: Path) -> Path:
         with sqlite3.connect(source.resolve().as_uri() + "?mode=ro", uri=True) as original:
             with sqlite3.connect(staged) as target:
                 original.backup(target)
-                # Produce a standalone snapshot without a companion WAL.
                 target.execute("PRAGMA journal_mode=DELETE")
                 if target.execute("PRAGMA integrity_check").fetchall() != [("ok",)]:
                     raise ValueError("Backup failed SQLite integrity check")
@@ -153,8 +150,6 @@ def restore(settings: Settings, source: str | Path):
     staged = _staged_snapshot(source, settings.data_dir)
     try:
         validate_database(staged)
-        # The operator must stop all backend processes before invoking restore.
-        # Never carry pre-backup authentication sessions back into service.
         with sqlite3.connect(staged) as db:
             db.execute("DELETE FROM sessions")
         _sync_file(staged)

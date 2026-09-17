@@ -40,9 +40,12 @@ export interface Show {
   update_weekday: number | null;
   source: "bangumi" | "tmdb" | null;
   source_id: number | null;
+  source_url: string | null;
   poster_path: string | null;
   seasons: number | null;
   air_status: "airing" | "ended" | "upcoming" | "released" | null;
+  release_year: number | null;
+  completed_on: string | null;
 }
 export interface Milestone {
   id: number;

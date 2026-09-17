@@ -33,9 +33,12 @@ const defaults: ShowFormDraft = {
   update_weekday: "",
   source: "",
   source_id: "",
+  source_url: "",
   poster_path: "",
   seasons: "",
   air_status: "",
+  release_year: "",
+  completed_on: "",
 };
 const form = reactive<ShowFormDraft>({ ...defaults, ...props.item });
 const localError = ref("");
@@ -49,8 +52,8 @@ const posterBusy = ref(false);
 const posterError = ref("");
 const posterInput = ref<HTMLInputElement>();
 const posterPreview = ref(!!props.item?.poster_path);
-const canLookup = computed(() => !props.item);
 const canEditCover = computed(() => !!props.item);
+const isSeries = computed(() => form.media_type !== "movie");
 const LOCAL_POSTER = "local:upload";
 const lookupLabels: Record<Show["media_type"], string> = {
   anime: "联网搜索动漫信息",
@@ -64,12 +67,27 @@ const airStatus: Record<string, string> = {
   released: "已上映",
 };
 
+function localDate() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 watch(
   () => form.media_type,
   (type) => {
     metadataSource.value = type === "anime" ? "bangumi" : "tmdb";
     metadataResults.value = [];
     metadataError.value = "";
+  },
+);
+
+watch(
+  () => form.status,
+  (status) => {
+    if (status === "completed" && !form.completed_on) form.completed_on = localDate();
   },
 );
 
@@ -130,7 +148,14 @@ function clearPoster() {
 }
 function save() {
   localError.value = "";
-  const result = normalizeShowPayload(form);
+  const draft: ShowFormDraft = { ...form };
+  if (draft.media_type === "movie") {
+    draft.progress = 0;
+    draft.total = "";
+    draft.update_weekday = "";
+    draft.seasons = "";
+  }
+  const result = normalizeShowPayload(draft);
   if (result.error) {
     localError.value = result.error;
     return;
@@ -142,21 +167,39 @@ function save() {
 <template>
   <ModalDialog
     :title="`${item ? '编辑' : '添加'}追剧`"
-    subtitle="给生活中的这件事，留一个位置。"
+    subtitle="补齐作品资料，也记住自己看到哪里。"
     @close="emit('close')"
   >
-    <form class="record-form" @submit.prevent="save">
-      <label>名称<input v-model="form.title" required maxlength="160" autofocus placeholder="例如：最近想看的那部剧" /></label>
-      <div class="form-grid">
-        <label>类型<select v-model="form.media_type"><option value="tv">剧集</option><option value="anime">动漫</option><option value="movie">电影</option></select></label>
-        <label>状态<select v-model="form.status"><option value="planned">想看</option><option value="watching">在看</option><option value="completed">已看完</option><option value="paused">暂搁</option></select></label>
-        <label>已看集数<input v-model="form.progress" type="number" max="1000000" min="0" step="1" required /></label>
-        <label>总集数 <span class="optional">选填</span><input v-model="form.total" type="number" max="1000000" min="1" step="1" placeholder="尚未确定" /></label>
-        <label>我的评分 <span class="optional">1–10</span><input v-model="form.score" type="number" min="1" max="10" step="1" placeholder="尚未评分" /></label>
-        <label>更新日<select v-model="form.update_weekday"><option value="">不固定</option><option v-for="(day, index) in ['周一','周二','周三','周四','周五','周六','周日']" :key="index" :value="index">{{ day }}</option></select></label>
-      </div>
+    <form class="record-form show-detail-form" @submit.prevent="save">
+      <section class="form-section">
+        <div class="form-section-heading">
+          <strong>基础信息</strong><span>作品本身</span>
+        </div>
+        <label>名称<input v-model="form.title" required maxlength="160" autofocus placeholder="例如：最近想看的那部剧" /></label>
+        <div class="form-grid">
+          <label>类型<select v-model="form.media_type"><option value="tv">剧集</option><option value="anime">动漫</option><option value="movie">电影</option></select></label>
+          <label>上映年份 <span class="optional">选填</span><input v-model="form.release_year" type="number" min="1000" max="9999" step="1" placeholder="例如 2024" /></label>
+        </div>
+      </section>
 
-      <div v-if="canLookup" class="metadata-lookup">
+      <section class="form-section">
+        <div class="form-section-heading">
+          <strong>观看信息</strong><span>你的进度</span>
+        </div>
+        <div class="form-grid">
+          <label>状态<select v-model="form.status"><option value="planned">想看</option><option value="watching">在看</option><option value="completed">已看完</option><option value="paused">暂搁</option></select></label>
+          <label>我的评分 <span class="optional">1–10</span><input v-model="form.score" type="number" min="1" max="10" step="1" placeholder="尚未评分" /></label>
+          <label v-if="isSeries">已看集数<input v-model="form.progress" type="number" max="1000000" min="0" step="1" required /></label>
+          <label v-if="isSeries">总集数 <span class="optional">选填</span><input v-model="form.total" type="number" max="1000000" min="1" step="1" placeholder="尚未确定" /></label>
+          <label v-if="isSeries">更新日<select v-model="form.update_weekday"><option value="">不固定</option><option v-for="(day, index) in ['周一','周二','周三','周四','周五','周六','周日']" :key="index" :value="index">{{ day }}</option></select></label>
+          <label>看完日期 <span class="optional">选填</span><input v-model="form.completed_on" type="date" /></label>
+        </div>
+      </section>
+
+      <section class="form-section metadata-lookup">
+        <div class="form-section-heading">
+          <strong>作品信息</strong><span>{{ item ? "可重新刮削" : "可联网补全" }}</span>
+        </div>
         <div class="metadata-toolbar">
           <div class="tabs metadata-source" aria-label="信息源">
             <button type="button" :class="{ active: metadataSource === 'bangumi' }" @click="metadataSource = 'bangumi'">Bangumi</button>
@@ -166,7 +209,7 @@ function save() {
             <AppIcon :name="metadataBusy ? 'loading' : 'search'" :size="15" />{{ metadataBusy ? "搜索中…" : lookupLabels[form.media_type] }}
           </button>
         </div>
-        <span class="field-hint">手动触发；TMDB 需在 .env 配置 DIGITAL_LIFE_TMDB_API_KEY</span>
+        <span class="field-hint">重新刮削只更新作品资料，不覆盖观看状态、进度、评分、备注和看完日期。</span>
         <p v-if="metadataError" class="field-hint" role="alert">{{ metadataError }}</p>
         <ul v-if="metadataResults.length" class="metadata-results">
           <li v-for="result in metadataResults" :key="`${result.source}-${result.source_id}`">
@@ -174,16 +217,23 @@ function save() {
               <img v-if="result.image" :src="result.image" alt="" loading="lazy" @error="(event) => ((event.target as HTMLImageElement).style.display = 'none')" />
               <div class="metadata-main">
                 <strong>{{ result.title }}</strong>
-                <span class="metadata-tags"><em v-if="result.platform">{{ result.platform }}</em><em v-if="result.seasons">{{ result.seasons }} 季</em><em v-if="result.air_status">{{ airStatus[result.air_status] }}</em></span>
+                <span class="metadata-tags"><em v-if="result.release_year">{{ result.release_year }}</em><em v-if="result.platform">{{ result.platform }}</em><em v-if="result.seasons">{{ result.seasons }} 季</em><em v-if="result.air_status">{{ airStatus[result.air_status] }}</em></span>
                 <span>{{ (result.total_episodes ? `${result.total_episodes} 集` : "集数未知") + (result.air_date ? ` · ${result.air_date}` : "") }}</span>
               </div>
             </button>
           </li>
         </ul>
-      </div>
+        <div class="form-grid source-fields">
+          <label>来源<select v-model="form.source"><option value="">无</option><option value="bangumi">Bangumi</option><option value="tmdb">TMDB</option></select></label>
+          <label>来源 ID <span class="optional">选填</span><input v-model="form.source_id" type="number" min="1" step="1" placeholder="刮削后自动填写" /></label>
+          <label v-if="isSeries">季数 <span class="optional">选填</span><input v-model="form.seasons" type="number" min="1" max="1000" step="1" placeholder="例如 2" /></label>
+          <label>播出状态<select v-model="form.air_status"><option value="">未知</option><option value="airing">连载中</option><option value="ended">已完结</option><option value="upcoming">未开播</option><option value="released">已上映</option></select></label>
+        </div>
+        <label>引用链接 <span class="optional">选填</span><input v-model="form.source_url" type="url" maxlength="500" placeholder="https://…" /></label>
+      </section>
 
-      <div v-if="canEditCover" class="poster-editor">
-        <span class="field-label">封面</span>
+      <section v-if="canEditCover" class="form-section poster-editor">
+        <div class="form-section-heading"><strong>封面</strong><span>本地图片优先</span></div>
         <div class="poster-editor-body">
           <div class="poster-thumb">
             <img v-if="posterPreview" :src="posterSrc()" :alt="form.title" @error="(event) => ((event.target as HTMLImageElement).style.display = 'none')" /><AppIcon v-else name="shows" :size="26" />
@@ -195,10 +245,13 @@ function save() {
           </div>
         </div>
         <p v-if="posterError" class="field-hint" role="alert">{{ posterError }}</p>
-        <p class="field-hint">上传或重新刮削会覆盖当前封面；链接封面需为 image.tmdb.org 或 lain.bgm.tv 图片地址。</p>
-      </div>
+      </section>
 
-      <label>备注 <span class="optional">选填</span><textarea v-model="form.notes" rows="3" maxlength="4000" placeholder="一些想记住的小细节…"></textarea></label>
+      <section class="form-section">
+        <div class="form-section-heading"><strong>备注</strong><span>只写你想记住的</span></div>
+        <label>备注 <span class="optional">选填</span><textarea v-model="form.notes" rows="3" maxlength="4000" placeholder="一些想记住的小细节…"></textarea></label>
+      </section>
+
       <p v-if="error || localError" role="alert" class="form-error">{{ localError || error }}</p>
       <footer class="modal-actions">
         <button v-if="item" type="button" class="button danger-ghost" :disabled="busy" @click="emit('remove', item)"><AppIcon name="delete" :size="15" />删除</button>

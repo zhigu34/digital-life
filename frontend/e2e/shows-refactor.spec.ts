@@ -52,10 +52,11 @@ async function navigate(page: Page, name: string) {
     .click()
 }
 
-async function addShow(page: Page, title: string, status = 'planned') {
+async function addShow(page: Page, title: string, status = 'planned', mediaType = 'tv') {
   await page.getByRole('button', { name: '添加作品', exact: true }).first().click()
   const dialog = page.getByRole('dialog')
   await dialog.getByLabel('名称', { exact: true }).fill(title)
+  await dialog.getByRole('combobox', { name: '类型', exact: true }).selectOption(mediaType)
   await dialog.getByRole('combobox', { name: '状态', exact: true }).selectOption(status)
   await dialog.getByRole('button', { name: '保存记录', exact: true }).click()
   await expect(dialog).toHaveCount(0)
@@ -81,4 +82,57 @@ test('shows filtering, search and cover editing stay stable', async ({ page }) =
   await page.getByRole('button', { name: '编辑 周末的好故事', exact: true }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
   await expect(page.getByRole('dialog').getByLabel('名称', { exact: true })).toHaveValue('周末的好故事')
+  await expect(page.getByRole('dialog').getByRole('button', { name: /联网搜索剧集信息/ })).toBeVisible()
+})
+
+test('show editor exposes richer metadata and adapts movie fields', async ({ page }) => {
+  await login(page, await account())
+  await navigate(page, '追剧片单')
+
+  await page.getByRole('button', { name: '添加作品', exact: true }).first().click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByLabel('名称', { exact: true }).fill('带资料的电影')
+  await dialog.getByRole('combobox', { name: '类型', exact: true }).selectOption('movie')
+
+  await expect(dialog.getByLabel(/^上映年份/)).toBeVisible()
+  await expect(dialog.getByLabel(/^引用链接/)).toBeVisible()
+  await expect(dialog.getByLabel('已看集数', { exact: true })).toHaveCount(0)
+  await expect(dialog.getByLabel('总集数', { exact: true })).toHaveCount(0)
+  await expect(dialog.getByLabel('更新日', { exact: true })).toHaveCount(0)
+  await expect(dialog.getByLabel('季数', { exact: true })).toHaveCount(0)
+
+  await dialog.getByLabel(/^上映年份/).fill('2024')
+  await dialog.getByLabel(/^引用链接/).fill('https://www.themoviedb.org/movie/42')
+  await dialog.getByRole('combobox', { name: '状态', exact: true }).selectOption('completed')
+  await expect(dialog.getByLabel(/^看完日期/)).not.toHaveValue('')
+  await dialog.getByRole('button', { name: '保存记录', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+
+  const titleLink = page.getByRole('link', { name: '带资料的电影', exact: true })
+  await expect(titleLink).toHaveAttribute('href', 'https://www.themoviedb.org/movie/42')
+  await expect(titleLink).toHaveAttribute('target', '_blank')
+  await expect(page.getByText('2024', { exact: true }).first()).toBeVisible()
+})
+
+test('shows are grouped by type and movie cards omit episode controls', async ({ page }) => {
+  await login(page, await account())
+  await navigate(page, '追剧片单')
+
+  await addShow(page, '分组剧集', 'watching', 'tv')
+  await addShow(page, '分组动漫', 'watching', 'anime')
+  await addShow(page, '分组电影', 'planned', 'movie')
+
+  await expect(page.getByRole('heading', { name: /剧集/ }).first()).toBeVisible()
+  await expect(page.getByRole('heading', { name: /动漫/ }).first()).toBeVisible()
+  await expect(page.getByRole('heading', { name: /电影/ }).first()).toBeVisible()
+
+  const movieCard = page.locator('article').filter({ hasText: '分组电影' })
+  const tvCard = page.locator('article').filter({ hasText: '分组剧集' })
+  await expect(movieCard.getByRole('button', { name: /\+1 集|看完一集/ })).toHaveCount(0)
+  await expect(tvCard.getByRole('button', { name: /\+1 集|看完一集/ })).toBeVisible()
+
+  await page.getByRole('button', { name: '在看', exact: true }).click()
+  await expect(page.getByText('分组电影', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('分组剧集', { exact: true })).toBeVisible()
+  await expect(page.getByText('分组动漫', { exact: true })).toBeVisible()
 })

@@ -29,9 +29,7 @@ USER_AGENT = "zhigu34-digital-life (self-hosted; no automated crawling)"
 TIMEOUT_SECONDS = 8.0
 MAX_RESULTS = 8
 TMDB_DETAIL_RESULTS = 6
-# Bangumi subject types: 2 = anime, 6 = real-person shows (drama and film).
 SUBJECT_TYPES = {"anime": [2], "tv": [6], "movie": [6]}
-# TMDB catalogues animation as ordinary TV shows.
 TMDB_KIND = {"anime": "tv", "tv": "tv", "movie": "movie"}
 TMDB_TV_STATUS = {
     "Returning Series": "airing",
@@ -41,12 +39,8 @@ TMDB_TV_STATUS = {
     "Pilot": "upcoming",
 }
 TMDB_MOVIE_STATUS = {"Released": "released"}
-# Poster downloads are proxied through the backend so browsers never need
-# outbound access; only these image hosts may be fetched.
 POSTER_HOSTS = {"image.tmdb.org", "lain.bgm.tv"}
 MAX_POSTER_BYTES = 5_000_000
-# Sentinel stored in Show.poster_path when the cover was uploaded directly,
-# rather than scraped from Bangumi or TMDB.
 LOCAL_POSTER = "local:upload"
 
 
@@ -55,9 +49,14 @@ def _reason(error: Exception) -> str:
     return f"{type(error).__name__}: {text[:180]}"
 
 
+def _release_year(value) -> int | None:
+    if not isinstance(value, str) or len(value) < 4 or not value[:4].isdigit():
+        return None
+    year = int(value[:4])
+    return year if 1000 <= year <= 9999 else None
+
+
 def _send(method: str, url: str, *, transport: httpx.BaseTransport | None = None, **kwargs):
-    # Honors standard proxy environment variables so hosts behind an outbound
-    # proxy can still reach the APIs; hosts without one connect directly.
     with httpx.Client(
         headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT_SECONDS, transport=transport
     ) as client:
@@ -65,15 +64,6 @@ def _send(method: str, url: str, *, transport: httpx.BaseTransport | None = None
 
 
 def _send_resilient(method: str, url: str, **kwargs):
-    """Request with one IPv4-only retry.
-
-    Docker networks usually have no IPv6 route, while providers like TMDB
-    publish AAAA records; the first connect attempt then fails with
-    ENETUNREACH or EAI_ADDRFAMILY ("address family for hostname not
-    supported") even though IPv4 works fine. Rather than matching the many
-    libc-specific message variants, any connect-phase failure gets a single
-    IPv4-only retry.
-    """
     try:
         return _send(method, url, **kwargs)
     except httpx.ConnectError as error:
@@ -85,24 +75,24 @@ def search_bangumi(keyword: str, subject_types: list[int]) -> list[dict]:
     response = _send_resilient(
         "post",
         f"{BANGUMI_API}/v0/search/subjects",
-        json={
-            "keyword": keyword,
-            "filter": {"type": subject_types},
-            "limit": MAX_RESULTS,
-        },
+        json={"keyword": keyword, "filter": {"type": subject_types}, "limit": MAX_RESULTS},
     )
     response.raise_for_status()
     results = []
     for item in response.json().get("data", []):
         episodes = item.get("total_episodes") or item.get("eps") or 0
         images = item.get("images") or {}
+        source_id = item.get("id")
+        air_date = item.get("date")
         results.append(
             {
                 "source": "bangumi",
-                "source_id": item.get("id"),
+                "source_id": source_id,
+                "source_url": f"https://bgm.tv/subject/{source_id}" if source_id else None,
                 "title": item.get("name_cn") or item.get("name") or keyword,
                 "original_title": item.get("name"),
-                "air_date": item.get("date"),
+                "air_date": air_date,
+                "release_year": _release_year(air_date),
                 "total_episodes": episodes or None,
                 "platform": item.get("platform"),
                 "image": images.get("common") or images.get("large"),
@@ -127,16 +117,18 @@ def search_tmdb(keyword: str, kind: str, api_key: str) -> list[dict]:
     search.raise_for_status()
     results = []
     for item in search.json().get("results", [])[:TMDB_DETAIL_RESULTS]:
+        source_id = item.get("id")
+        air_date = item.get("first_air_date") or item.get("release_date")
         entry = {
             "source": "tmdb",
-            "source_id": item.get("id"),
+            "source_id": source_id,
+            "source_url": f"https://www.themoviedb.org/{kind}/{source_id}" if source_id else None,
             "title": item.get("name") or item.get("title") or keyword,
             "original_title": item.get("original_name") or item.get("original_title"),
-            "air_date": item.get("first_air_date") or item.get("release_date"),
+            "air_date": air_date,
+            "release_year": _release_year(air_date),
             "poster": item.get("poster_path"),
         }
-        # Season and airing status live on the detail endpoint; a failing
-        # detail lookup only degrades that one candidate.
         detail: dict = {}
         try:
             detail_response = _send_resilient(
@@ -204,10 +196,6 @@ def lookup_metadata(
     except HTTPException:
         raise
     except Exception as error:
-        # Any outbound failure (DNS, proxy, TLS, upstream status) is simply an
-        # unavailable optional service; it must never surface as a 500. The
-        # owner-facing detail carries the concrete cause so connectivity can be
-        # diagnosed from the form itself; the full traceback goes to the log.
         logger.exception("Metadata lookup via %s failed", provider)
         raise HTTPException(502, f"暂时无法连接信息源（{provider}）：{_reason(error)}") from error
 
@@ -248,8 +236,6 @@ def show_poster(
     cache_dir = settings.data_dir / "posters"
     cached = cache_dir / f"{show.id}.img"
     if show.poster_path == LOCAL_POSTER:
-        # User-uploaded poster: the file must already be on disk; it is never
-        # re-fetched, so a missing cache file means the upload did not land.
         if not cached.is_file():
             raise HTTPException(404, "封面文件缺失，请重新上传")
     else:
@@ -285,11 +271,6 @@ async def upload_poster(
     identity: Identity = Depends(authenticated),
     db: Session = Depends(get_db),
 ):
-    """Replace a show's cover with a user-uploaded image.
-
-    The poster is stored on disk next to the proxied poster cache and the
-    record keeps a sentinel value so the download path is skipped on read.
-    """
     show = owned(db, Show, item_id, identity.user.id)
     content = await file.read()
     if not content:
@@ -298,8 +279,6 @@ async def upload_poster(
         raise HTTPException(413, f"封面不能超过 {MAX_POSTER_BYTES // 1_000_000} MB")
     content_type = (file.content_type or "").split(";")[0].strip().lower()
     if content_type not in {"image/jpeg", "image/png", "image/webp"}:
-        # Fall back to sniffing the magic bytes: browsers sometimes label
-        # uploads loosely, and the real format is what gets served.
         content_type = sniff_image(content)
         if not content_type:
             raise HTTPException(415, "仅支持 JPEG / PNG / WebP 图片")

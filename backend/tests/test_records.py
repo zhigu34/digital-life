@@ -81,6 +81,72 @@ def test_show_advance_and_combined_patch_validation(accounts):
     alice.patch(path, headers=ah, json={"progress": 1, "status": "watching"})
     advanced = alice.post(path + "/advance", headers=ah).json()
     assert advanced["progress"] == 2 and advanced["status"] == "completed"
+    assert advanced["completed_on"] is not None
+
+
+def test_user_today_respects_profile_timezone():
+    from datetime import UTC, date, datetime
+
+    from app.records import user_today
+
+    now = datetime(2026, 9, 17, 6, 30, tzinfo=UTC)
+    assert user_today("America/Los_Angeles", now) == date(2026, 9, 16)
+    assert user_today("Asia/Shanghai", now) == date(2026, 9, 17)
+
+
+def test_show_richer_metadata_and_completion_date(accounts):
+    app, admin, headers, alice, ah, bob, bh = accounts
+    created = alice.post(
+        "/api/shows",
+        headers=ah,
+        json={
+            "title": "作品资料",
+            "release_year": 2024,
+            "source_url": "https://bgm.tv/subject/123",
+            "completed_on": "2024-12-31",
+        },
+    )
+    assert created.status_code == 201, created.text
+    item = created.json()
+    assert item["release_year"] == 2024
+    assert item["source_url"] == "https://bgm.tv/subject/123"
+    assert item["completed_on"] == "2024-12-31"
+
+    watching = alice.post(
+        "/api/shows", headers=ah, json={"title": "自动完成日期", "status": "watching"}
+    ).json()
+    path = f"/api/shows/{watching['id']}"
+    completed = alice.patch(path, headers=ah, json={"status": "completed"}).json()
+    assert completed["completed_on"] is not None
+    first_date = completed["completed_on"]
+    unchanged = alice.patch(path, headers=ah, json={"title": "仍已完成"}).json()
+    assert unchanged["completed_on"] == first_date
+    explicit = alice.patch(path, headers=ah, json={"completed_on": "2020-01-02"}).json()
+    assert explicit["completed_on"] == "2020-01-02"
+    cleared = alice.patch(path, headers=ah, json={"completed_on": None}).json()
+    assert cleared["completed_on"] is None
+    unchanged_empty = alice.patch(path, headers=ah, json={"title": "已完成但不记录日期"}).json()
+    assert unchanged_empty["completed_on"] is None
+    watching_again = alice.patch(path, headers=ah, json={"status": "watching"}).json()
+    assert watching_again["completed_on"] is None
+    completed_again = alice.patch(path, headers=ah, json={"status": "completed"}).json()
+    assert completed_again["completed_on"] is not None
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"release_year": 999},
+        {"release_year": 10000},
+        {"release_year": True},
+        {"source_url": "javascript:alert(1)"},
+        {"source_url": "ftp://example.com/show"},
+    ],
+)
+def test_show_richer_metadata_rejects_invalid_values(accounts, payload):
+    app, admin, headers, alice, ah, bob, bh = accounts
+    result = alice.post("/api/shows", headers=ah, json={"title": "非法资料", **payload})
+    assert result.status_code == 422
 
 
 @pytest.mark.parametrize(
@@ -113,11 +179,7 @@ def test_patch_rejects_boolean_period(accounts):
     expense = alice.post(
         "/api/expenses",
         headers=ah,
-        json={
-            "title": "验证",
-            "amount_cents": 1,
-            "next_due": "2027-01-01",
-        },
+        json={"title": "验证", "amount_cents": 1, "next_due": "2027-01-01"},
     ).json()
     result = alice.patch(f"/api/expenses/{expense['id']}", headers=ah, json={"period_months": True})
     assert result.status_code == 422
@@ -130,11 +192,7 @@ def test_concurrent_progression_is_not_lost(accounts):
     expense = alice.post(
         "/api/expenses",
         headers=ah,
-        json={
-            "title": "月末",
-            "amount_cents": 1,
-            "next_due": "2027-01-31",
-        },
+        json={"title": "月末", "amount_cents": 1, "next_due": "2027-01-31"},
     ).json()
     path = f"/api/expenses/{expense['id']}"
     with ThreadPoolExecutor(max_workers=2) as pool:

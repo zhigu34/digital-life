@@ -2,7 +2,7 @@
 import { computed, ref } from "vue";
 import type { Show, Stats } from "../types";
 import type { ShowFilter } from "../shows";
-import { filterShows } from "../shows";
+import { filterShows, groupShowsByType } from "../shows";
 import { labels } from "../domain";
 import AppIcon from "../components/AppIcon.vue";
 import EmptyState from "../components/EmptyState.vue";
@@ -24,10 +24,16 @@ const search = ref("");
 const filter = ref<ShowFilter>("all");
 const tabs: ShowFilter[] = ["all", "watching", "planned", "completed", "paused"];
 const filtered = computed(() => filterShows(props.shows, search.value, filter.value));
+const groups = computed(() => groupShowsByType(filtered.value));
+const groupLabels: Record<Show["media_type"], string> = {
+  tv: "剧集",
+  anime: "动漫",
+  movie: "电影",
+};
 </script>
 
 <template>
-  <section class="page collection-page">
+  <section class="page collection-page shows-page">
     <header class="page-heading">
       <div>
         <span class="eyebrow">A GOOD STORY AWAITS</span>
@@ -91,15 +97,23 @@ const filtered = computed(() => filterShows(props.shows, search.value, filter.va
       title="没有找到对应记录"
       description="试试其他关键词，或切换状态筛选。"
     />
-    <div v-else class="record-list card-grid has-shows">
-      <ShowCard
-        v-for="item in filtered"
-        :key="item.id"
-        :item="item"
-        :busy="busy"
-        @edit="emit('edit', $event)"
-        @advance="emit('action', $event, 'advance')"
-      />
+    <div v-else class="show-groups">
+      <section v-for="group in groups" :key="group.type" class="show-group">
+        <header class="show-group-heading">
+          <h2>{{ groupLabels[group.type] }}</h2>
+          <span>{{ group.items.length }}</span>
+        </header>
+        <div class="record-list card-grid has-shows">
+          <ShowCard
+            v-for="item in group.items"
+            :key="item.id"
+            :item="item"
+            :busy="busy"
+            @edit="emit('edit', $event)"
+            @advance="emit('action', $event, 'advance')"
+          />
+        </div>
+      </section>
     </div>
 
     <p v-if="shows.length" class="page-footnote">一点一滴，都是生活的痕迹。</p>

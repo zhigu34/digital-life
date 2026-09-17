@@ -57,7 +57,6 @@ class Profile(Payload):
     @field_validator("timezone")
     @classmethod
     def valid_timezone(cls, value):
-        # ZoneInfo also loads host-specific files which browser Intl cannot use.
         if value in {"Factory", "localtime", "posixrules"} or value.startswith(
             ("posix/", "right/")
         ):
@@ -70,8 +69,6 @@ class Profile(Payload):
 
 
 class UserView(Payload):
-    # Responses must remain readable when an older release saved a timezone
-    # which is no longer accepted for input; the user can then repair it.
     display_name: DisplayName
     birthday: ISODate | None = None
     timezone: str
@@ -163,9 +160,19 @@ class ShowPayload(Payload):
     update_weekday: Annotated[StrictInt, Field(ge=0, le=6)] | None = None
     source: Literal["bangumi", "tmdb"] | None = None
     source_id: StrictInt | None = Field(default=None, ge=1, le=2**63 - 1)
+    source_url: Annotated[str, Field(max_length=500)] | None = None
     poster_path: Annotated[str, Field(max_length=500)] | None = None
     seasons: StrictInt | None = Field(default=None, ge=1, le=1000)
     air_status: Literal["airing", "ended", "upcoming", "released"] | None = None
+    release_year: StrictInt | None = Field(default=None, ge=1000, le=9999)
+    completed_on: ISODate | None = None
+
+    @field_validator("source_url")
+    @classmethod
+    def valid_source_url(cls, value):
+        if value is not None and not re.match(r"^https?://", value, re.IGNORECASE):
+            raise ValueError("Source URL must use HTTP or HTTPS")
+        return value
 
     @model_validator(mode="after")
     def progress_within_total(self):
@@ -211,8 +218,6 @@ class NoteView(NotePayload):
 
 
 def patch_schema(name, schema):
-    # Presence and extra keys are validated here. Validate the merged complete
-    # payload again in the route, so null and cross-field constraints stay intact.
     return create_model(
         name,
         __base__=Payload,
