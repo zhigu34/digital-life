@@ -160,7 +160,12 @@ class ExpenseView(ExpensePayload):
 
 
 # Compatibility exports: Shows schemas are physically owned by app.shows.schemas.
-from app.shows.schemas import MAX_EPISODES, ShowPatch, ShowPayload, ShowView  # noqa: E402
+from app.shows.schemas import (  # noqa: E402
+    MAX_EPISODES as MAX_EPISODES,
+    ShowPatch as ShowPatch,
+    ShowPayload as ShowPayload,
+    ShowView as ShowView,
+)
 
 
 class MilestonePayload(Payload):
