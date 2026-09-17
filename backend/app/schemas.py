@@ -1,6 +1,5 @@
 import re
 from datetime import date, datetime
-from importlib import import_module
 from typing import Annotated, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -42,6 +41,7 @@ Notes = Annotated[str, Field(max_length=4000)]
 StrictInt = Annotated[int, Field(strict=True)]
 StrictBool = Annotated[bool, Field(strict=True)]
 Theme = Literal["light", "dark", "system"]
+_SHOW_SCHEMA_EXPORTS = {"MAX_EPISODES", "ShowPatch", "ShowPayload", "ShowView"}
 
 
 class Payload(BaseModel):
@@ -57,6 +57,18 @@ def patch_schema(name, schema):
             for key, field in schema.model_fields.items()
         },
     )
+
+
+def __getattr__(name):
+    """Lazily expose Shows schemas without creating an import-order cycle."""
+
+    if name not in _SHOW_SCHEMA_EXPORTS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    from app.shows import schemas as show_schemas
+
+    value = getattr(show_schemas, name)
+    globals()[name] = value
+    return value
 
 
 class Profile(Payload):
@@ -158,14 +170,6 @@ class ExpensePayload(Payload):
 
 class ExpenseView(ExpensePayload):
     id: int
-
-
-# Compatibility exports: Shows schemas are physically owned by app.shows.schemas.
-_show_schemas = import_module("app.shows.schemas")
-MAX_EPISODES = _show_schemas.MAX_EPISODES
-ShowPatch = _show_schemas.ShowPatch
-ShowPayload = _show_schemas.ShowPayload
-ShowView = _show_schemas.ShowView
 
 
 class MilestonePayload(Payload):
