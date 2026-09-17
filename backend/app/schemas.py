@@ -25,7 +25,6 @@ def iso_date(value):
 
 ISODate = Annotated[date, BeforeValidator(iso_date)]
 ResourceId = Annotated[int, Path(ge=1, le=2**63 - 1)]
-MAX_EPISODES = 1_000_000
 
 
 def integer_period(value):
@@ -42,10 +41,34 @@ Notes = Annotated[str, Field(max_length=4000)]
 StrictInt = Annotated[int, Field(strict=True)]
 StrictBool = Annotated[bool, Field(strict=True)]
 Theme = Literal["light", "dark", "system"]
+_SHOW_SCHEMA_EXPORTS = {"MAX_EPISODES", "ShowPatch", "ShowPayload", "ShowView"}
 
 
 class Payload(BaseModel):
     model_config = ConfigDict(extra="forbid", from_attributes=True)
+
+
+def patch_schema(name, schema):
+    return create_model(
+        name,
+        __base__=Payload,
+        **{
+            key: (field.rebuild_annotation() | None, None)
+            for key, field in schema.model_fields.items()
+        },
+    )
+
+
+def __getattr__(name):
+    """Lazily expose Shows schemas without creating an import-order cycle."""
+
+    if name not in _SHOW_SCHEMA_EXPORTS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    from app.shows import schemas as show_schemas
+
+    value = getattr(show_schemas, name)
+    globals()[name] = value
+    return value
 
 
 class Profile(Payload):
@@ -149,42 +172,6 @@ class ExpenseView(ExpensePayload):
     id: int
 
 
-class ShowPayload(Payload):
-    title: Annotated[str, Field(min_length=1, max_length=160)]
-    media_type: Literal["anime", "tv", "movie"] = "tv"
-    status: Literal["planned", "watching", "completed", "paused"] = "planned"
-    progress: Annotated[StrictInt, Field(ge=0, le=MAX_EPISODES)] = 0
-    total: Annotated[StrictInt, Field(ge=1, le=MAX_EPISODES)] | None = None
-    score: Annotated[StrictInt, Field(ge=1, le=10)] | None = None
-    notes: Notes = ""
-    update_weekday: Annotated[StrictInt, Field(ge=0, le=6)] | None = None
-    source: Literal["bangumi", "tmdb"] | None = None
-    source_id: StrictInt | None = Field(default=None, ge=1, le=2**63 - 1)
-    source_url: Annotated[str, Field(max_length=500)] | None = None
-    poster_path: Annotated[str, Field(max_length=500)] | None = None
-    seasons: StrictInt | None = Field(default=None, ge=1, le=1000)
-    air_status: Literal["airing", "ended", "upcoming", "released"] | None = None
-    release_year: StrictInt | None = Field(default=None, ge=1000, le=9999)
-    completed_on: ISODate | None = None
-
-    @field_validator("source_url")
-    @classmethod
-    def valid_source_url(cls, value):
-        if value is not None and not re.match(r"^https?://", value, re.IGNORECASE):
-            raise ValueError("Source URL must use HTTP or HTTPS")
-        return value
-
-    @model_validator(mode="after")
-    def progress_within_total(self):
-        if self.total is not None and self.progress > self.total:
-            raise ValueError("Progress cannot exceed total")
-        return self
-
-
-class ShowView(ShowPayload):
-    id: int
-
-
 class MilestonePayload(Payload):
     title: Annotated[str, Field(min_length=1, max_length=120)]
     date: ISODate
@@ -217,21 +204,9 @@ class NoteView(NotePayload):
     created_at: datetime
 
 
-def patch_schema(name, schema):
-    return create_model(
-        name,
-        __base__=Payload,
-        **{
-            key: (field.rebuild_annotation() | None, None)
-            for key, field in schema.model_fields.items()
-        },
-    )
-
-
 ProfilePatch = patch_schema("ProfilePatch", Profile)
 TaskPatch = patch_schema("TaskPatch", TaskPayload)
 ExpensePatch = patch_schema("ExpensePatch", ExpensePayload)
-ShowPatch = patch_schema("ShowPatch", ShowPayload)
 MilestonePatch = patch_schema("MilestonePatch", MilestonePayload)
 NotePatch = patch_schema("NotePatch", NotePayload)
 ProjectPatch = patch_schema("ProjectPatch", ProjectPayload)
