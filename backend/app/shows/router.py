@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -78,8 +78,6 @@ def advance_show(
     show = owned_show(db, item_id, identity.user.id)
     if show.total is None or show.progress < show.total:
         if show.progress >= MAX_EPISODES:
-            from fastapi import HTTPException
-
             raise HTTPException(400, "集数已达到支持的上限（1,000,000）")
         show.progress += 1
         show.status = "completed" if show.progress == show.total else "watching"
