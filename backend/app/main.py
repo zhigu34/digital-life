@@ -10,6 +10,7 @@ from app import admin, auth, checkins, imports, maintenance, metadata, records, 
 from app.config import Settings
 from app.database import make_engine, migrate, session_factory
 from app.models import Base
+from app.shows.router import router as shows_router
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +45,6 @@ def create_app(data_dir=None):
         response = await call_next(request)
         if request.url.path.startswith("/api"):
             if request.url.path.endswith("/poster"):
-                # Posters are re-fetchable cache files, not private JSON; the
-                # route itself already enforces session ownership.
                 response.headers["Cache-Control"] = "private, max-age=604800"
             else:
                 response.headers["Cache-Control"] = "no-store"
@@ -66,8 +65,9 @@ def create_app(data_dir=None):
 
     app.include_router(auth.router)
     app.include_router(admin.router)
-    # /api/shows/metadata must be matched before the generic /api/shows/{id}.
+    # Static show routes must be matched before /api/shows/{item_id}.
     app.include_router(metadata.router)
+    app.include_router(shows_router)
     app.include_router(records.router)
     app.include_router(maintenance.router)
     app.include_router(stats.router)
