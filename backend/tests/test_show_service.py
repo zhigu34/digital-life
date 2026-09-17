@@ -1,6 +1,6 @@
-from datetime import UTC, date, datetime
 import subprocess
 import sys
+from datetime import UTC, date, datetime
 
 from app.shows.service import user_today
 
