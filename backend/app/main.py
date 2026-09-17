@@ -6,10 +6,11 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select, text
 from sqlalchemy.exc import SQLAlchemyError
 
-from app import admin, auth, checkins, imports, maintenance, metadata, records, stats
+from app import admin, auth, checkins, imports, maintenance, records, stats
 from app.config import Settings
 from app.database import make_engine, migrate, session_factory
 from app.models import Base
+from app.shows.metadata import router as shows_metadata_router
 from app.shows.router import router as shows_router
 
 logger = logging.getLogger(__name__)
@@ -66,7 +67,7 @@ def create_app(data_dir=None):
     app.include_router(auth.router)
     app.include_router(admin.router)
     # Static show routes must be matched before /api/shows/{item_id}.
-    app.include_router(metadata.router)
+    app.include_router(shows_metadata_router)
     app.include_router(shows_router)
     app.include_router(records.router)
     app.include_router(maintenance.router)
