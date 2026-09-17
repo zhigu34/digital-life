@@ -5,12 +5,11 @@ import { calendarDate } from "./domain";
 import type { User, Records, Collection, Page, RecordItem, Maintenance, Project, Stats } from "./types";
 import AppIcon from "./components/AppIcon.vue";
 import RecordForm from "./components/RecordForm.vue";
-import ShowForm from "./components/ShowForm.vue";
 import LoginView from "./views/LoginView.vue";
 import TodayView from "./views/TodayView.vue";
 import CalendarView from "./views/CalendarView.vue";
 import CollectionView from "./views/CollectionView.vue";
-import ShowsView from "./views/ShowsView.vue";
+import ShowsView from "./features/shows/ShowsView.vue";
 import ProfileView from "./views/ProfileView.vue";
 import AdminView from "./views/AdminView.vue";
 import MaintenanceView from "./views/MaintenanceView.vue";
@@ -43,7 +42,7 @@ async function mutate(path:string,method:string,data?:unknown,message="已更新
 async function removeMaintenance(item:Maintenance){if(!window.confirm(`确定删除“${item.title}”及其全部完成历史？删除后无法恢复。`))return;await mutate(`/maintenance/${item.id}`,"DELETE",undefined,"维护事项及历史已删除");}
 async function saveProject(data:Record<string,unknown>,id?:number){busy.value=true;formError.value="";try{await api(`/projects${id?`/${id}`:""}`,id?"PATCH":"POST",data);await load();notify(id?"在做已更新":"已加入在做");}catch(e){handleError(e);}finally{busy.value=false;}}
 async function removeProject(item:Project){if(!window.confirm(`确定删除“${item.title}”？删除后无法恢复。`))return;busy.value=true;try{await api(`/projects/${item.id}`,"DELETE");await load();notify("在做已删除");}catch(e){handleError(e);}finally{busy.value=false;}}
-function action(collection:Collection,id:number,kind:string,data?:unknown){if(kind==="pay"&&!window.confirm("确认本期已经支付？下次应付日期将向后推进一个周期。"))return;return mutate(`/${collection}/${id}${kind==="status"?"":`/${kind}`}`,kind==="status"?"PATCH":"POST",data,kind==="pay"?"本期已付，下次日期已更新":kind==="advance"?"又看完一集，进度已更新":"状态已更新");}
+function action(collection:Collection,id:number,kind:string,data?:unknown){if(kind==="pay"&&!window.confirm("确认本期已经支付？下次应付日期将向后推进一个周期。"))return;return mutate(`/${collection}/${id}${kind==="status"?"":`/${kind}`}`,kind==="status"?"PATCH":"POST",data,kind==="pay"?"本期已付，下次日期已更新":"状态已更新");}
 async function profile(data:unknown){busy.value=true;try{user.value=await api<User>("/auth/profile","PATCH",data);notify("个人资料已保存");}catch(e){handleError(e);}finally{busy.value=false;}}
 async function password(data:unknown){busy.value=true;try{await api("/auth/password","POST",data);clear();loginError.value="密码已更新，请使用新密码登录";}catch(e){handleError(e);}finally{busy.value=false;}}
 async function exportData(){busy.value=true;try{const data=await api("/export");const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:"application/json"}));const a=document.createElement("a");a.href=url;a.download=`digital-life-${today.value}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);notify("你的数据已导出");}catch(e){handleError(e);}finally{busy.value=false;}}
@@ -61,7 +60,7 @@ onUnmounted(()=>{media.removeEventListener("change",theme);clearInterval(clockTi
       <div v-if="error" class="global-error" role="alert"><span>{{error}}</span><button class="text-button" @click="load">重新加载</button><button class="icon-button" aria-label="关闭错误提示" @click="error='' "><AppIcon name="close" :size="16" /></button></div><div v-if="loading" class="loading-line" role="status" aria-label="正在同步记录"></div>
       <TodayView v-if="page==='today'" :user="user" :records="records" :today="today" :busy="busy" @navigate="navigate" @create="open" @complete="(id)=>action('tasks',id,'status',{status:'done'})" @checkin="(id)=>mutate(`/checkins/${id}/check`,'POST',{},'已打卡，继续保持')" />
       <CalendarView v-else-if="page==='calendar'" :records="records" :today="today" @navigate="navigate" />
-      <ShowsView v-else-if="page==='shows'" :shows="records.shows" :stats="stats" :busy="busy" @create="open('shows')" @edit="(item)=>open('shows',item)" @action="(id,kind)=>action('shows',id,kind)" />
+      <ShowsView v-else-if="page==='shows'" :key="user.id" :stats="stats" @refresh="load" @error="handleError" @notice="notify" />
       <CollectionView v-else-if="['tasks','expenses','milestones'].includes(page)" :key="page" :collection="page as Collection" :records="records" :stats="stats" :today="today" :busy="busy" @create="open(page as Collection)" @edit="(item)=>open(page as Collection,item)" @remove="(item)=>remove(page as Collection,item)" @action="(id,kind,data)=>action(page as Collection,id,kind,data)" />
       <MaintenanceView v-else-if="page==='maintenance'" :key="user.id" :items="records.maintenance" :stats="stats" :today="today" :parent-busy="busy" @refresh="load" @error="handleError" @notice="notify" @remove="removeMaintenance" />
       <CheckInsView v-else-if="page==='checkins'" :key="user.id" :items="records.checkins" :today="today" :parent-busy="busy" @refresh="load" @error="handleError" @notice="notify" />
@@ -73,8 +72,7 @@ onUnmounted(()=>{media.removeEventListener("change",theme);clearInterval(clockTi
     <nav class="mobile-nav" aria-label="移动端导航"><button v-for="id in mobilePrimary" :key="id" :aria-label="id === 'today' ? '今日总览' : pageLabels[id]" :class="{active:page===id}" @click="navigate(id)"><AppIcon :name="id" :size="21" /><span>{{mobileNavLabels[id]}}</span></button><button :class="{active:moreOpen||secondaryPages.includes(page)}" :aria-expanded="moreOpen" aria-label="更多页面" @click="moreOpen=!moreOpen"><AppIcon name="menu" :size="21" /><span>更多</span></button></nav>
     <div v-if="moreOpen" class="mobile-more-backdrop" aria-label="关闭更多菜单" @click="moreOpen=false"></div>
     <nav v-if="moreOpen" class="mobile-more-sheet" aria-label="更多页面"><button v-for="id in secondaryPages" :key="id" :class="{active:page===id}" @click="navigate(id)"><AppIcon :name="id" :size="19" /><span>{{pageLabels[id]}}</span></button><button v-if="user.is_admin" :class="{active:page==='admin'}" @click="navigate('admin')"><AppIcon name="admin" :size="19" /><span>账户管理</span></button><button :class="{active:page==='profile'}" @click="navigate('profile')"><AppIcon name="profile" :size="19" /><span>个人设置</span></button></nav>
-    <ShowForm v-if="editing?.collection==='shows'" :key="`shows-${editing.item?.id ?? 'new'}`" :item="editing.item as Records['shows'][number] | undefined" :busy="busy" :error="formError" @close="editing=null" @save="save" @remove="(item)=>remove('shows',item)" />
-    <RecordForm v-else-if="editing" :key="`${editing.collection}-${editing.item?.id ?? 'new'}`" :collection="editing.collection" :item="editing.item" :today="today" :busy="busy" :error="formError" @close="editing=null" @save="save" @remove="(item)=>remove(editing!.collection,item)" />
+    <RecordForm v-if="editing" :key="`${editing.collection}-${editing.item?.id ?? 'new'}`" :collection="editing.collection" :item="editing.item" :today="today" :busy="busy" :error="formError" @close="editing=null" @save="save" @remove="(item)=>remove(editing!.collection,item)" />
     <Transition name="toast"><div v-if="notice" class="toast" role="status"><AppIcon name="check" :size="18" />{{notice}}</div></Transition>
   </div>
 </template>
