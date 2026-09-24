@@ -26,9 +26,7 @@ def user_today(timezone: str, now: datetime | None = None) -> date:
     return instant.astimezone(zone).date()
 
 
-def set_completion_date(
-    values: dict, timezone: str, previous_status: str | None = None
-) -> None:
+def set_completion_date(values: dict, timezone: str, previous_status: str | None = None) -> None:
     if (
         values["status"] == "completed"
         and previous_status != "completed"

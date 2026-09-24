@@ -1,6 +1,6 @@
 import httpx
 
-from app import metadata as metadata_module
+from app.shows import metadata as metadata_module
 
 
 def response(method, url, payload):

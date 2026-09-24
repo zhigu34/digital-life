@@ -12,9 +12,7 @@ router = APIRouter(prefix="/api/shows", tags=["shows"])
 
 
 @router.get("", response_model=list[ShowView])
-def list_shows(
-    identity: Identity = Depends(authenticated), db: Session = Depends(get_db)
-):
+def list_shows(identity: Identity = Depends(authenticated), db: Session = Depends(get_db)):
     return db.scalars(
         select(Show).where(Show.user_id == identity.user.id).order_by(Show.id.desc())
     ).all()

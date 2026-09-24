@@ -31,9 +31,9 @@ from app.schemas import (
     NotePayload,
     Notes,
     ProjectPayload,
-    ShowPayload,
     TaskPayload,
 )
+from app.shows.schemas import ShowPayload
 
 router = APIRouter(prefix="/api", tags=["import"])
 MAX_PER_COLLECTION = 10_000

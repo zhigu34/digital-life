@@ -2,8 +2,8 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from app import metadata as metadata_module
 from app.main import create_app
+from app.shows import metadata as metadata_module
 
 
 @pytest.fixture

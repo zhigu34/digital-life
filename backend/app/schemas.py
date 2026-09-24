@@ -41,7 +41,6 @@ Notes = Annotated[str, Field(max_length=4000)]
 StrictInt = Annotated[int, Field(strict=True)]
 StrictBool = Annotated[bool, Field(strict=True)]
 Theme = Literal["light", "dark", "system"]
-_SHOW_SCHEMA_EXPORTS = {"MAX_EPISODES", "ShowPatch", "ShowPayload", "ShowView"}
 
 
 class Payload(BaseModel):
@@ -57,18 +56,6 @@ def patch_schema(name, schema):
             for key, field in schema.model_fields.items()
         },
     )
-
-
-def __getattr__(name):
-    """Lazily expose Shows schemas without creating an import-order cycle."""
-
-    if name not in _SHOW_SCHEMA_EXPORTS:
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    from app.shows import schemas as show_schemas
-
-    value = getattr(show_schemas, name)
-    globals()[name] = value
-    return value
 
 
 class Profile(Payload):

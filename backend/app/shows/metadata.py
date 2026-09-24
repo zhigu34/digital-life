@@ -1,8 +1,6 @@
 """Shows metadata lookup and poster handling (Bangumi / TMDB)."""
 
 import logging
-import sys
-from types import ModuleType
 from urllib.parse import urlparse
 
 import httpx
@@ -37,23 +35,6 @@ POSTER_HOSTS = {"image.tmdb.org", "lain.bgm.tv"}
 MAX_POSTER_BYTES = 5_000_000
 LOCAL_POSTER = "local:upload"
 
-_compat_api: ModuleType | None = None
-
-
-def set_compat_api(module: ModuleType) -> None:
-    """Route internal call sites through the legacy facade when it is imported.
-
-    This keeps historical `app.metadata` monkeypatch points working while the
-    implementation and runtime router live in the Shows domain package.
-    """
-
-    global _compat_api
-    _compat_api = module
-
-
-def _api() -> ModuleType:
-    return _compat_api or sys.modules[__name__]
-
 
 def _reason(error: Exception) -> str:
     text = str(error).split("\n", 1)[0]
@@ -76,10 +57,10 @@ def _send(method: str, url: str, *, transport: httpx.BaseTransport | None = None
 
 def _send_resilient(method: str, url: str, **kwargs):
     try:
-        return _api()._send(method, url, **kwargs)
+        return _send(method, url, **kwargs)
     except httpx.ConnectError as error:
         logger.info("Retrying %s over IPv4 only after %s", url, type(error).__name__)
-        return _api()._send(
+        return _send(
             method,
             url,
             transport=httpx.HTTPTransport(local_address="0.0.0.0"),
@@ -88,7 +69,7 @@ def _send_resilient(method: str, url: str, **kwargs):
 
 
 def search_bangumi(keyword: str, subject_types: list[int]) -> list[dict]:
-    response = _api()._send_resilient(
+    response = _send_resilient(
         "post",
         f"{BANGUMI_API}/v0/search/subjects",
         json={"keyword": keyword, "filter": {"type": subject_types}, "limit": MAX_RESULTS},
@@ -120,7 +101,7 @@ def search_bangumi(keyword: str, subject_types: list[int]) -> list[dict]:
 
 
 def search_tmdb(keyword: str, kind: str, api_key: str) -> list[dict]:
-    search = _api()._send_resilient(
+    search = _send_resilient(
         "get",
         f"{TMDB_API}/search/{kind}",
         params={
@@ -147,7 +128,7 @@ def search_tmdb(keyword: str, kind: str, api_key: str) -> list[dict]:
         }
         detail: dict = {}
         try:
-            detail_response = _api()._send_resilient(
+            detail_response = _send_resilient(
                 "get",
                 f"{TMDB_API}/{kind}/{item['id']}",
                 params={"api_key": api_key, "language": "zh-CN"},
@@ -205,9 +186,9 @@ def lookup_metadata(
     provider = "TMDB" if source == "tmdb" else "Bangumi"
     try:
         if source == "tmdb":
-            results = _api().search_tmdb(keyword, TMDB_KIND[media_type], settings.tmdb_api_key)
+            results = search_tmdb(keyword, TMDB_KIND[media_type], settings.tmdb_api_key)
         else:
-            results = _api().search_bangumi(keyword, SUBJECT_TYPES[media_type])
+            results = search_bangumi(keyword, SUBJECT_TYPES[media_type])
         return {"results": results}
     except HTTPException:
         raise
@@ -217,7 +198,7 @@ def lookup_metadata(
 
 
 def fetch_image(url: str) -> tuple[bytes, str]:
-    response = _api()._send_resilient("get", url, follow_redirects=True)
+    response = _send_resilient("get", url, follow_redirects=True)
     response.raise_for_status()
     content = response.content
     content_type = response.headers.get("content-type", "").split(";")[0].strip().lower()
@@ -260,7 +241,7 @@ def show_poster(
             raise HTTPException(400, "封面来源不受支持")
         if not cached.is_file():
             try:
-                content, content_type = _api().fetch_image(show.poster_path)
+                content, content_type = fetch_image(show.poster_path)
             except ValueError as error:
                 logger.warning("Poster rejected: %s", error)
                 raise HTTPException(502, f"封面文件无效：{error}") from None

@@ -34,12 +34,12 @@ from app.schemas import (
     ProjectPayload,
     ProjectView,
     ResourceId,
-    ShowView,
     TaskPatch,
     TaskPayload,
     TaskView,
     UserView,
 )
+from app.shows.schemas import ShowView
 
 router = APIRouter(prefix="/api", tags=["records"])
 COLLECTIONS = {
