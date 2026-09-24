@@ -4,7 +4,7 @@
 
 这是一个可在 x86 NAS 上自托管的生活工作台。用户使用独立账号登录，记录待办/在办、出生天数、纪念日、固定花销和追番追剧。界面以中文为主，同时适配桌面和手机。
 
-用户明确选择：**本地开发 → GitHub → CI 测试 → NAS `git pull --ff-only && ./deploy`**。仓库是 `zhigu34/digital-life`。工程部署方式参考相邻的 `camera-recorder`，但本项目独立维护；没有任务授权时不要修改那个项目。这里使用 Docker Compose 自托管，不要改成第三方网站托管。核心功能不得依赖运行时联网；唯一例外是追剧表单中用户手动触发的 Bangumi 动漫元数据搜索（`app/metadata.py`，可用 `DIGITAL_LIFE_DISABLE_METADATA=true` 整体关闭），也不接入需要密钥或 AI 的外部服务。
+用户明确选择：**本地开发 → GitHub → CI 测试 → NAS `git pull --ff-only && ./deploy`**。仓库是 `zhigu34/digital-life`。工程部署方式参考相邻的 `camera-recorder`，但本项目独立维护；没有任务授权时不要修改那个项目。这里使用 Docker Compose 自托管，不要改成第三方网站托管。核心功能不得依赖运行时联网；唯一例外是追剧表单中用户手动触发的 Bangumi 动漫元数据搜索（`app/shows/metadata.py`，可用 `DIGITAL_LIFE_DISABLE_METADATA=true` 整体关闭），也不接入需要密钥或 AI 的外部服务。
 
 ## 新会话从哪里开始
 
@@ -19,16 +19,21 @@
 - `backend/app/main.py`：应用生命周期、来源校验、缓存头与健康检查。
 - `backend/app/auth.py`、`security.py`：会话、CSRF、密码和个人设置。
 - `backend/app/admin.py`：管理员创建/停用账号、重置密码。
-- `backend/app/models.py`、`schemas.py`、`records.py`：数据模型、校验、原有业务集合和个人导出。
+- `backend/app/models.py`、`schemas.py`、`records.py`：数据模型、通用校验原语、通用集合（待办/费用/重要日子/随记/在做）和个人导出。
+- `backend/app/shows/`：追剧域独立边界。`router.py` 拥有 `/api/shows` 增删改查与 `/advance`；`service.py` 拥有归属查找与完成日期推进规则；`schemas.py` 拥有 Show 请求/响应模型（通用 `schemas.py` 不再转发 Shows 模型）；`metadata.py` 拥有 Bangumi/TMDB 抓取、封面代理与封面上传。
 - `backend/app/maintenance.py`、`maintenance_schemas.py`：周期维护、按实际日期计算的周期和带费用的完成历史。
 - `backend/app/database.py`、`backend/migrations/`：SQLite 与 Alembic 迁移。
 - `backend/app/cli.py`：管理员初始化、数据库迁移、一致性备份与离线恢复。
-- `frontend/src/App.vue`：登录状态、页面切换和数据加载；`views/`、`components/`：页面和交互组件。
+- `frontend/src/App.vue`：应用外壳（会话、导航、主题、全局通知与跨域快照），不承载具体域的增删改查。
+- `frontend/src/features/shows/`：追剧域独立边界（`ShowsView`/`ShowCard`/`ShowForm`/`api.ts`/`domain.ts`/`useShows.ts`/`shows.css`），自行加载并在变更后只刷新自己，向 App 回传快照。
+- `frontend/src/views/`、`components/`：其余页面与共享交互组件。
 - `frontend/src/views/MaintenanceView.vue`：周期维护配置、完成与历史修正；日期由后端派生。
 - `frontend/src/domain.ts`：时区、日期、周年与固定花销计算；`api.ts`：Cookie/CSRF API 客户端。
 - `frontend/src/styles.css`：响应式与主题；`frontend/public/`：PWA 图标、清单、静态缓存。
 - `deploy`、`scripts/`、`docker-compose.yml`、Dockerfiles、`frontend/nginx.conf`：NAS 运行与维护。
 - `.github/workflows/ci.yml`：CI；`tests/deploy/`：部署脚本行为测试；`frontend/e2e/`：真实浏览器测试。
+
+模块边界约定：追剧域的数据加载与变更只在 `features/shows/` 与 `app/shows/` 内完成；App 只保留今日/日历所需的跨域快照，Shows 变更不再触发全局 `load()`。统计口径以服务端 `GET /api/stats` 为唯一真源，前端不得重算聚合。新增复杂集合时沿用同一模式（后端域包 + 前端 feature 自持数据 + 回传快照）。
 
 ## 开发环境和测试
 

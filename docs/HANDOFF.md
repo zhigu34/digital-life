@@ -1,5 +1,18 @@
 # Digital Life 接手状态
 
+## 2026-09-25 V2 模块化重构的兼容层收口
+
+`main` 已于 2026-09-17 完成 V2 模块化重构（四阶段：`codex/v2-modular-architecture`、`codex/v2-backend-shows-boundary`、`codex/v2-frontend-shows-ownership`、`codex/v2-shows-module-cleanup`，经 PR #6 合入 `6c2d711`，main CI 全绿）。该重构把追剧拆成前后端独立域，但遗留了若干只为兼容而存在的层。本轮清理这些残留并补齐文档：
+
+- 删除 `backend/app/metadata.py` 兼容 facade（手工 re-export 20+ 符号 + `set_compat_api(sys.modules[__name__])` 反向注入，仅为保留 `app.metadata` 这个测试 monkeypatch 点）；`tests/test_metadata.py`、`tests/test_show_metadata_enrichment.py` 改为 `from app.shows import metadata as metadata_module`。
+- 删除 `backend/app/shows/metadata.py` 的 `_api()` 间接层（`_compat_api` / `set_compat_api` / `_api()` 以及 `sys`、`ModuleType` 导入），所有调用点改回同模块直接调用，patch 语义不变。
+- 收口 `backend/app/schemas.py` 的 Shows 惰性兼容导出（`_SHOW_SCHEMA_EXPORTS` + `__getattr__`）：`records.py` 的 `ShowView`、`imports.py` 的 `ShowPayload` 改为从 `app.shows.schemas` 直连导入；删除 `tests/test_show_service.py` 中只为兼容层存在的 legacy 导出相等断言（此后 `app.schemas` 不再暴露任何 Shows 模型，导入环随之消失）。
+- `frontend/src/shows.css` 经 `git mv` 内聚到 `frontend/src/features/shows/shows.css`，`main.ts` 同步引用。
+- `frontend/src/App.vue` 的 `syncShows()` 不再本地重算 `stats.shows`（与后端 `app/stats.py` 重复实现，重构期间已因此出过 bug），改为变更后请求 `GET /api/stats` 刷新；`records.shows` 仍由 feature 回传的快照更新。
+- 文档同步：更新 `AGENTS.md` 代码结构章节（新增 `backend/app/shows/`、`frontend/src/features/shows/`，修正已删除的 `app/metadata.py` 引用）与模块边界约定；`docs/contracts/api.md` 补齐 Show 的 `release_year` / `completed_on` / `source_url` 字段与完成日期语义。
+
+验证：本地后端 `pytest` 149 项通过（基线 150，减少的 1 项即随兼容层删除的 legacy 导出断言）、`ruff` 通过；前端 Vitest 40 项、`vue-tsc` 类型检查与生产构建通过。容器 E2E 与 Docker 场景由分支 GitHub CI 验证（本机无 Docker）。未执行 NAS 部署，仍由用户在合入后运行 `git pull --ff-only && ./deploy`。
+
 ## 2026-09-16 追剧模块独立化
 
 追剧前端已从通用集合实现中拆出独立 `ShowsView.vue`、`ShowCard.vue`、`ShowForm.vue` 与 `shows.ts`；`CollectionView.vue` / `RecordForm.vue` 不再承载追剧专属 UI、元数据搜索或封面逻辑。后端 API、SQLite 模型和迁移均未修改，`/api/shows`、Bangumi/TMDB 元数据、poster 代理/上传与 `local:upload` 语义保持不变。实现分支 `codex/shows-module-refactor`，设计提交 `fbc4496`，主要实现/修复提交包括 `41abe2f`、`6d02206`、`4151434`、`94e2ca0`、`803795d`、`69504f9`。GitHub Actions CI #52（run `35117772201`，head `69504f9`）已验证 backend、frontend（Vitest + build）和 docker-e2e（桌面/手机 Playwright、持久化、backend-only 重部署）全部 success。执行环境无法稳定 clone GitHub，因此本轮以 GitHub Actions 作为完整验证证据；未执行 NAS 部署，仍由用户在合入 `main` 后运行 `git pull --ff-only && ./deploy`。
