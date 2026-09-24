@@ -11,7 +11,7 @@
 - `frontend/src/App.vue` 的 `syncShows()` 不再本地重算 `stats.shows`（与后端 `app/stats.py` 重复实现，重构期间已因此出过 bug），改为变更后请求 `GET /api/stats` 刷新；`records.shows` 仍由 feature 回传的快照更新。
 - 文档同步：更新 `AGENTS.md` 代码结构章节（新增 `backend/app/shows/`、`frontend/src/features/shows/`，修正已删除的 `app/metadata.py` 引用）与模块边界约定；`docs/contracts/api.md` 补齐 Show 的 `release_year` / `completed_on` / `source_url` 字段与完成日期语义。
 
-验证：本地后端 `pytest` 149 项通过（基线 150，减少的 1 项即随兼容层删除的 legacy 导出断言）、`ruff` 通过；前端 Vitest 40 项、`vue-tsc` 类型检查与生产构建通过。容器 E2E 与 Docker 场景由分支 GitHub CI 验证（本机无 Docker）。未执行 NAS 部署，仍由用户在合入后运行 `git pull --ff-only && ./deploy`。
+验证：本地后端 `pytest` 149 项通过（基线 150，减少的 1 项即随兼容层删除的 legacy 导出断言）、`ruff check` 与 `ruff format --check` 通过；前端 Vitest 40 项、`vue-tsc` 类型检查与生产构建通过。容器 E2E 与 Docker 部署场景由分支 `codex/v2-debt-cleanup` 的 GitHub CI 验证：run `36039743973`（head `3dfb752`）的 backend、frontend、docker-e2e 三个 job 全部 success。未执行 NAS 部署，仍由用户在合入后运行 `git pull --ff-only && ./deploy`。
 
 ## 2026-09-16 追剧模块独立化
 
