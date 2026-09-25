@@ -2,7 +2,7 @@
 
 ## 项目目标与已确认约定
 
-这是一个可在 x86 NAS 上自托管的生活工作台。用户使用独立账号登录，记录待办/在办、出生天数、纪念日、固定花销和追番追剧。界面以中文为主，同时适配桌面和手机。
+这是一个可在 x86 NAS 上自托管的生活工作台。用户使用独立账号登录，记录待办/在办、出生天数、纪念日、周期账单与日常记账、追番追剧。界面以中文为主，同时适配桌面和手机。
 
 用户明确选择：**本地开发 → GitHub → CI 测试 → NAS `git pull --ff-only && ./deploy`**。仓库是 `zhigu34/digital-life`。工程部署方式参考相邻的 `camera-recorder`，但本项目独立维护；没有任务授权时不要修改那个项目。这里使用 Docker Compose 自托管，不要改成第三方网站托管。核心功能不得依赖运行时联网；唯一例外是追剧表单中用户手动触发的 Bangumi 动漫元数据搜索（`app/shows/metadata.py`，可用 `DIGITAL_LIFE_DISABLE_METADATA=true` 整体关闭），也不接入需要密钥或 AI 的外部服务。
 
@@ -19,21 +19,24 @@
 - `backend/app/main.py`：应用生命周期、来源校验、缓存头与健康检查。
 - `backend/app/auth.py`、`security.py`：会话、CSRF、密码和个人设置。
 - `backend/app/admin.py`：管理员创建/停用账号、重置密码。
-- `backend/app/models.py`、`schemas.py`、`records.py`：数据模型、通用校验原语、通用集合（待办/费用/重要日子/随记/在做）和个人导出。
+- `backend/app/models.py`、`schemas.py`、`records.py`：数据模型、通用校验原语、通用集合（待办/账单/重要日子/随记/在做）和个人导出；账单的账户/分类/商户默认绑定与「确认已付时按需生成流水」也在 `records.py`。
+- `backend/app/ledger/`：记账域独立边界。`router.py` 拥有 `/api/ledger` 下账户/分类/商户/流水四组增删改查与 `/payees/{id}/merge`；`service.py` 拥有归属查找、派生余额、引用校验（409/422）与默认分类播种；`schemas.py` 拥有记账请求/响应模型与 kind 字段组合规则。余额是派生值，没有存储余额列。
+- `backend/app/timezones.py`：`user_today()` 与 `validate_timezone()` 的唯一归属地。跨域「今天」一律从这里取，避免 `records ↔ ledger ↔ maintenance` 形成导入环。
 - `backend/app/shows/`：追剧域独立边界。`router.py` 拥有 `/api/shows` 增删改查与 `/advance`；`service.py` 拥有归属查找与完成日期推进规则；`schemas.py` 拥有 Show 请求/响应模型（通用 `schemas.py` 不再转发 Shows 模型）；`metadata.py` 拥有 Bangumi/TMDB 抓取、封面代理与封面上传。
 - `backend/app/maintenance.py`、`maintenance_schemas.py`：周期维护、按实际日期计算的周期和带费用的完成历史。
 - `backend/app/database.py`、`backend/migrations/`：SQLite 与 Alembic 迁移。
 - `backend/app/cli.py`：管理员初始化、数据库迁移、一致性备份与离线恢复。
 - `frontend/src/App.vue`：应用外壳（会话、导航、主题、全局通知与跨域快照），不承载具体域的增删改查。
 - `frontend/src/features/shows/`：追剧域独立边界（`ShowsView`/`ShowCard`/`ShowForm`/`api.ts`/`domain.ts`/`useShows.ts`/`shows.css`），自行加载并在变更后只刷新自己，向 App 回传快照。
+- `frontend/src/features/ledger/`：记账域独立边界（`LedgerView` 四分区 + `EntryList`/`EntryForm`/`BillPanel`/`AccountPanel`/`CategoryPanel`/`PayeePanel`/`ReportPanel`/`api.ts`/`useLedger.ts`/`ledger.ts` 纯派生/`ledger.css`）。账单仍由 App 的 `records.expenses` 持有，记账域通过 `sync` 回传，不触发全局 `load()`。
 - `frontend/src/views/`、`components/`：其余页面与共享交互组件。
 - `frontend/src/views/MaintenanceView.vue`：周期维护配置、完成与历史修正；日期由后端派生。
-- `frontend/src/domain.ts`：时区、日期、周年与固定花销计算；`api.ts`：Cookie/CSRF API 客户端。
+- `frontend/src/domain.ts`：时区、日期、周年与账单月均/应付计算；`api.ts`：Cookie/CSRF API 客户端。
 - `frontend/src/styles.css`：响应式与主题；`frontend/public/`：PWA 图标、清单、静态缓存。
 - `deploy`、`scripts/`、`docker-compose.yml`、Dockerfiles、`frontend/nginx.conf`：NAS 运行与维护。
 - `.github/workflows/ci.yml`：CI；`tests/deploy/`：部署脚本行为测试；`frontend/e2e/`：真实浏览器测试。
 
-模块边界约定：追剧域的数据加载与变更只在 `features/shows/` 与 `app/shows/` 内完成；App 只保留今日/日历所需的跨域快照，Shows 变更不再触发全局 `load()`。统计口径以服务端 `GET /api/stats` 为唯一真源，前端不得重算聚合。新增复杂集合时沿用同一模式（后端域包 + 前端 feature 自持数据 + 回传快照）。
+模块边界约定：追剧域与记账域的数据加载与变更只在各自的 `features/<域>/` 与 `app/<域>/` 内完成；App 只保留今日/日历所需的跨域快照，域内变更不再触发全局 `load()`。统计口径以服务端 `GET /api/stats` 为唯一真源，前端不得重算聚合；记账页选中单个账户时按已加载流水本地汇总属明确例外（服务端不提供按账户分组口径），该本地口径必须与全局口径可对齐。新增复杂集合时沿用同一模式（后端域包 + 前端 feature 自持数据 + 回传快照）。
 
 ## 开发环境和测试
 
@@ -93,7 +96,7 @@ E2E 会创建多个测试账号和生活记录；只对独立测试环境运行�
 - 写请求必须验证会话 CSRF 和浏览器 Origin。不要为了通过反向代理测试而关掉 CSRF、放宽到任意来源或盲信转发头。
 - 登出、密码修改、管理员重置/停用、恢复备份都必须正确撤销会话；账号切换清空前端旧状态。
 - 不创建公开注册/管理员抢注入口，不内置生产账号或密码。PWA 只能缓存公共静态资源，不能缓存私人 API、导出或附件。
-- 金额以整数分存储，分币种统计；月均成本与本月应付分开。确认已付仅推进下次日期，不代表银行交易流水。
+- 金额以整数分存储，分币种统计，不做汇率换算；账户余额与记账报表一律由流水派生，不存易漂移的余额列。账单的「本月应付」（按 next_due 整周期外推的投影）与流水的「本月实际收支」（按 occurred_on 归集）是两个并列口径，不得互相替代，也不得让前端把两者相加。确认已付默认只推进下次日期；只有在账单绑定账户（或本次请求指定账户）时才在同一事务内补一条流水，并遵循「先校验、后推进日期」，校验失败不得改变 next_due。转账不计入收入与支出。
 - 周期扣费保留月末 anchor，例如 1/31 → 2/28 → 3/31。出生天数使用个人时区的日历日期；闰日周年在平年按 2/28 处理。
 - 时区输入须兼容浏览器 Intl，拒绝 Factory/localtime/posix/right 等系统专用名称；旧资料不能导致登录、导出或修复资料返回 500，日期显示应有 UTC 回退。
 - 周期维护与固定账单语义不同：维护按最新实际完成日顺延，补录不倒退，历史修正后重新取最大完成日期。同日重复须返回409；创建自动生成首条历史，删除事项级联删除历史。

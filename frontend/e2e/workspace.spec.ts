@@ -53,6 +53,21 @@ async function save(page: Page) {
   await page.getByRole('dialog').getByRole('button', { name: '保存记录', exact: true }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
 }
+/** Recurring bills moved into the ledger page, behind its inner tab bar. */
+async function ledgerTab(page: Page, name: '流水' | '账单' | '管理' | '报表') {
+  await page.locator('.ledger-tabs').getByRole('button', { name, exact: true }).click()
+}
+async function addBill(page: Page, title: string) {
+  await page.locator('.bill-heading').getByRole('button', { name: '添加账单', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toBeVisible()
+  await dialog.getByLabel('名称', { exact: true }).fill(title)
+  return dialog
+}
+async function saveBill(page: Page) {
+  await page.getByRole('dialog').getByRole('button', { name: '保存账单', exact: true }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+}
 
 test('task lifecycle, profile and layout work on each device', async ({ page }, testInfo) => {
   await login(page, await account())
@@ -91,14 +106,15 @@ test('task lifecycle, profile and layout work on each device', async ({ page }, 
   await expect(page.getByRole('heading', { name: '读完一本好书，并写下感想', exact: true })).toHaveCount(0)
 })
 
-test('expenses, shows and milestones persist through reload', async ({ page }, testInfo) => {
+test('bills, shows and milestones persist through reload', async ({ page }, testInfo) => {
   await login(page, await account())
-  await navigate(page, '周期费用')
-  let form = await add(page, '添加费用', '云存储年费')
+  await navigate(page, '记账')
+  await ledgerTab(page, '账单')
+  let form = await addBill(page, '云存储年费')
   await form.getByLabel('每期金额', { exact: true }).fill('120')
   await form.getByRole('combobox', { name: '付费周期', exact: true }).selectOption('12')
   await form.getByLabel('下次应付', { exact: true }).fill('2027-01-31')
-  await save(page)
+  await saveBill(page)
   await page.getByRole('button', { name: '确认本期已付' }).click()
   await expect(page.getByText('2028.01.31')).toBeVisible()
   await navigate(page, '追剧片单')
@@ -172,11 +188,12 @@ test('calendar gathers deadlines, dues and yearly milestones in one view', async
   let form = await add(page, '添加待办', '月底前整理相册')
   await form.getByLabel('截止日期', { exact: false }).fill(iso(25))
   await save(page)
-  await navigate(page, '周期费用')
-  form = await add(page, '添加费用', '家庭云盘')
+  await navigate(page, '记账')
+  await ledgerTab(page, '账单')
+  form = await addBill(page, '家庭云盘')
   await form.getByLabel('每期金额', { exact: true }).fill('30')
   await form.getByLabel('下次应付', { exact: false }).fill(iso(18))
-  await save(page)
+  await saveBill(page)
   await navigate(page, '重要日子')
   form = await add(page, '添加日子', '领证纪念日')
   await form.getByLabel('日期', { exact: true }).fill(`${Number(year) - 2}-${month}-21`)
@@ -204,11 +221,12 @@ test('calendar gathers deadlines, dues and yearly milestones in one view', async
 test('statistics panels summarize expenses, maintenance costs and shows', async ({ page }, testInfo) => {
   await login(page, await account())
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date())
-  await navigate(page, '周期费用')
-  let form = await add(page, '添加费用', '家庭云盘')
+  await navigate(page, '记账')
+  await ledgerTab(page, '账单')
+  let form = await addBill(page, '家庭云盘')
   await form.getByLabel('每期金额', { exact: true }).fill('30')
   await form.getByLabel('下次应付', { exact: false }).fill(`${today.slice(0, 7)}-18`)
-  await save(page)
+  await saveBill(page)
   const trend = page.getByRole('region', { name: '近十二个月应付趋势' })
   await expect(trend).toBeVisible()
   await expect(trend).toContainText('¥30.00')
