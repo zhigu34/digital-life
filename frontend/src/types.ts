@@ -191,6 +191,17 @@ export interface Stats {
     payees: StatsLedgerPayee[];
   };
 }
+export interface Bookmark {
+  id: number;
+  url: string;
+  title: string;
+  note: string;
+  folder: string | null;
+  starred: boolean;
+  visit_count: number;
+  last_visited_at: string | null;
+  created_at: string;
+}
 export interface Records {
   tasks: Task[];
   expenses: Expense[];
@@ -209,5 +220,6 @@ export type Page =
   | "notes"
   | "checkins"
   | "projects"
+  | "bookmarks"
   | "profile"
   | "admin";

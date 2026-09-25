@@ -65,6 +65,7 @@ def test_import_replaces_account_data_from_export(accounts):
         "shows": 1,
         "milestones": 1,
         "notes": 0,
+        "bookmarks": 0,
         "maintenance": 1,
         "maintenance_logs": 2,
         "checkins": 0,

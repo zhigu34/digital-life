@@ -139,5 +139,5 @@ def test_migrate_0004_to_0005_keeps_accounts_and_shows(tmp_path):
         )
         assert created.status_code == 201
     with sqlite3.connect(settings.database_path) as db:
-        assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0008",)
+        assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0009",)
         assert db.execute("PRAGMA foreign_key_check").fetchall() == []

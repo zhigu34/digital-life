@@ -9,12 +9,14 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.auth import Identity, authenticated
+from app.bookmarks.schemas import BookmarkPayload
 from app.database import get_db
 from app.ledger.schemas import AccountPayload, CategoryPayload, EntryPayload, PayeePayload
 from app.ledger.service import payee_key
 from app.maintenance import calculated_due
 from app.maintenance_schemas import MaintenanceCreate, MaintenanceLogView
 from app.models import (
+    Bookmark,
     CheckIn,
     CheckInLog,
     Expense,
@@ -95,6 +97,13 @@ class ProjectRow(ProjectPayload):
     created_at: datetime | None = None
 
 
+class BookmarkRow(BookmarkPayload):
+    model_config = IGNORE_EXTRA
+    visit_count: int = 0
+    last_visited_at: datetime | None = None
+    created_at: datetime | None = None
+
+
 class CheckInLogRow(BaseModel):
     model_config = IGNORE_EXTRA
     checkin_id: int
@@ -132,6 +141,7 @@ COLLECTION_ROWS = {
     "milestones": MilestoneRow,
     "notes": NoteRow,
     "projects": ProjectRow,
+    "bookmarks": BookmarkRow,
     "ledger_accounts": LedgerAccountRow,
     "ledger_categories": LedgerCategoryRow,
     "ledger_payees": LedgerPayeeRow,
@@ -271,6 +281,7 @@ def import_data(
         Maintenance,
         CheckIn,
         Project,
+        Bookmark,
         Task,
         Expense,
         Show,
@@ -366,6 +377,15 @@ def import_data(
                 values["created_at"] = row.created_at or datetime.now(UTC).replace(tzinfo=None)
             db.add(model(user_id=user_id, **values))
 
+    for row in collections["bookmarks"]:
+        db.add(
+            Bookmark(
+                user_id=user_id,
+                created_at=row.created_at or datetime.now(UTC).replace(tzinfo=None),
+                **row.model_dump(exclude={"created_at"}),
+            )
+        )
+
     for row, notes in converted_projects:
         db.add(
             Project(
@@ -437,6 +457,7 @@ def import_data(
             "checkins": len(kept_checkins),
             "checkin_logs": imported_checkin_logs,
             "projects": len(collections["projects"]) + len(converted_projects),
+            "bookmarks": len(collections["bookmarks"]),
             "ledger_accounts": len(account_map),
             "ledger_categories": len(category_map),
             "ledger_payees": len(payee_index),

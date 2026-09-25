@@ -16,6 +16,7 @@ from app.ledger.service import (
 )
 from app.maintenance_schemas import MaintenanceLogView, MaintenanceView
 from app.models import (
+    Bookmark,
     CheckIn,
     CheckInLog,
     Expense,
@@ -316,4 +317,20 @@ def export_data(identity: Identity = Depends(authenticated), db: Session = Depen
             "expense_id",
         ),
     )
+    data["bookmarks"] = [
+        {
+            "id": row.id,
+            "url": row.url,
+            "title": row.title,
+            "note": row.note,
+            "folder": row.folder,
+            "starred": row.starred,
+            "visit_count": row.visit_count,
+            "last_visited_at": row.last_visited_at,
+            "created_at": row.created_at,
+        }
+        for row in db.scalars(
+            select(Bookmark).where(Bookmark.user_id == identity.user.id).order_by(Bookmark.id)
+        )
+    ]
     return data

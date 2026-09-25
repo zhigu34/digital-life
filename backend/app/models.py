@@ -227,3 +227,18 @@ class LedgerEntry(Owned, Base):
         ForeignKey("expenses.id", ondelete="SET NULL"), nullable=True, index=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class Bookmark(Owned, Base):
+    __tablename__ = "bookmarks"
+    __table_args__ = (Index("ix_bookmarks_user_folder", "user_id", "folder"),)
+    url: Mapped[str] = mapped_column(Text)
+    title: Mapped[str] = mapped_column(String(160))
+    note: Mapped[str] = mapped_column(Text, default="")
+    # Grouping is a plain string: importing a browser bookmark file keeps the
+    # folder path, and nothing needs a second table to resolve a name.
+    folder: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    starred: Mapped[bool] = mapped_column(Boolean, default=False)
+    visit_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_visited_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime)

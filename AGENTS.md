@@ -4,7 +4,7 @@
 
 这是一个可在 x86 NAS 上自托管的生活工作台。用户使用独立账号登录，记录待办/在办、出生天数、纪念日、周期账单与日常记账、追番追剧。界面以中文为主，同时适配桌面和手机。
 
-用户明确选择：**本地开发 → GitHub → CI 测试 → NAS `git pull --ff-only && ./deploy`**。仓库是 `zhigu34/digital-life`。工程部署方式参考相邻的 `camera-recorder`，但本项目独立维护；没有任务授权时不要修改那个项目。这里使用 Docker Compose 自托管，不要改成第三方网站托管。核心功能不得依赖运行时联网；唯一例外是追剧表单中用户手动触发的 Bangumi 动漫元数据搜索（`app/shows/metadata.py`，可用 `DIGITAL_LIFE_DISABLE_METADATA=true` 整体关闭），也不接入需要密钥或 AI 的外部服务。
+用户明确选择：**本地开发 → GitHub → CI 测试 → NAS `git pull --ff-only && ./deploy`**。仓库是 `zhigu34/digital-life`。工程部署方式参考相邻的 `camera-recorder`，但本项目独立维护；没有任务授权时不要修改那个项目。这里使用 Docker Compose 自托管，不要改成第三方网站托管。核心功能不得依赖运行时联网；唯一例外是两处用户手动触发的抓取：追剧表单的 Bangumi 动漫元数据搜索（`app/shows/metadata.py`）与书签表单的网页标题获取（`app/bookmarks/service.py`），两者共用 `DIGITAL_LIFE_DISABLE_METADATA=true` 整体关闭，也不接入需要密钥或 AI 的外部服务。书签的站点图标由浏览器直接向目标站点请求，后端不代理、不落库，因此不算后端联网。
 
 ## 新会话从哪里开始
 
@@ -23,11 +23,13 @@
 - `backend/app/ledger/`：记账域独立边界。`router.py` 拥有 `/api/ledger` 下账户/分类/商户/流水四组增删改查与 `/payees/{id}/merge`；`service.py` 拥有归属查找、派生余额、引用校验（409/422）与默认分类播种；`schemas.py` 拥有记账请求/响应模型与 kind 字段组合规则。余额是派生值，没有存储余额列。
 - `backend/app/timezones.py`：`user_today()` 与 `validate_timezone()` 的唯一归属地。跨域「今天」一律从这里取，避免 `records ↔ ledger ↔ maintenance` 形成导入环。
 - `backend/app/shows/`：追剧域独立边界。`router.py` 拥有 `/api/shows` 增删改查与 `/advance`；`service.py` 拥有归属查找与完成日期推进规则；`schemas.py` 拥有 Show 请求/响应模型（通用 `schemas.py` 不再转发 Shows 模型）；`metadata.py` 拥有 Bangumi/TMDB 抓取、封面代理与封面上传。
+- `backend/app/bookmarks/`：书签域独立边界。`router.py` 拥有 `/api/bookmarks` 增删改查、`/title` 标题获取与 `/{id}/visit` 访问计数；`service.py` 拥有归属查找、`<title>` 解析与 SSRF 防护（禁止内网/回环/保留地址，重定向逐跳重校验）；`schemas.py` 拥有 URL 校验（仅 http/https、≤2048、禁空格与 `javascript:`）。分组是可空字符串 `folder`，不建关联表。
 - `backend/app/maintenance.py`、`maintenance_schemas.py`：周期维护、按实际日期计算的周期和带费用的完成历史。
 - `backend/app/database.py`、`backend/migrations/`：SQLite 与 Alembic 迁移。
 - `backend/app/cli.py`：管理员初始化、数据库迁移、一致性备份与离线恢复。
 - `frontend/src/App.vue`：应用外壳（会话、导航、主题、全局通知与跨域快照），不承载具体域的增删改查。
 - `frontend/src/features/shows/`：追剧域独立边界（`ShowsView`/`ShowCard`/`ShowForm`/`api.ts`/`domain.ts`/`useShows.ts`/`shows.css`），自行加载并在变更后只刷新自己，向 App 回传快照。
+- `frontend/src/features/bookmarks/`：书签域独立边界（`BookmarksView`/`BookmarkForm`/`api.ts`/`bookmarks.ts` 纯派生/`useBookmarks.ts`/`bookmarks.css`）。自行加载、自持状态，**不回传 App 快照**（页面键 `bookmarks` 带 `:key="user.id"`，切换账号自动重建），因此不在今日概览展示。
 - `frontend/src/features/ledger/`：记账域独立边界（`LedgerView` 四分区 + `EntryList`/`EntryForm`/`BillPanel`/`AccountPanel`/`CategoryPanel`/`PayeePanel`/`ReportPanel`/`api.ts`/`useLedger.ts`/`ledger.ts` 纯派生/`ledger.css`）。账单仍由 App 的 `records.expenses` 持有，记账域通过 `sync` 回传，不触发全局 `load()`。
 - `frontend/src/views/`、`components/`：其余页面与共享交互组件。
 - `frontend/src/views/MaintenanceView.vue`：周期维护配置、完成与历史修正；日期由后端派生。

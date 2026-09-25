@@ -26,7 +26,7 @@ Show: `{id,title,media_type,status,progress,total,score,notes,update_weekday,sou
 
 Milestone: `{id,title,date,repeats_yearly,notes}` title 1–120, date required, repeats_yearly false default, notes max4000 default ''. PATCH accepts all except id.
 
-`GET /export` returns JSON object with user (no hashes/sessions), tasks, expenses, shows, milestones, notes, checkins, projects, maintenance, maintenance_logs, plus 记账域的 `ledger_accounts`、`ledger_categories`、`ledger_payees`、`ledger_entries`。账户余额是派生值，**不导出**。Only own data. Client downloads through authenticated fetch.
+`GET /export` returns JSON object with user (no hashes/sessions), tasks, expenses, shows, milestones, notes, checkins, projects, bookmarks, maintenance, maintenance_logs, plus 记账域的 `ledger_accounts`、`ledger_categories`、`ledger_payees`、`ledger_entries`。账户余额是派生值，**不导出**。Only own data. Client downloads through authenticated fetch.
 
 ## Administration
 GET `/admin/users` → User[]. POST `{username,password,display_name}` → User (201, ordinary user). PATCH `/admin/users/<id>` `{display_name?,is_active?,password?}` → User. Disallow administrator self-disable; reset/disable revokes target sessions. Ordinary user gets 403. Admin does not bypass collection ownership.
@@ -92,3 +92,15 @@ Entry：`{id,occurred_on,kind,amount_cents,currency,account_id,from_account_id,t
 列表支持 `from`/`to`（默认截至用户时区今天）、`kind`、`account_id`、`category_id`、`payee_id` 过滤，并按 `occurred_on`、`id` 倒序。为避免一次请求倾倒整本旧账，默认只返回最近 12 个月窗口且 `limit` 默认 500、上限 2000。`account_id` 过滤把转账的两侧都算作该账户的活动，但转账永远不计入收支。
 
 流水按 `occurred_on` 归入月度统计，转账被排除在收入与支出之外；账户余额与报表都由流水派生，没有需要手工对账的存储余额。
+
+## 书签（2026-09-26）
+
+`GET/POST /api/bookmarks`、`GET/PATCH/DELETE /api/bookmarks/{id}`，归属、CSRF、Origin 规则与其他集合一致；路由前缀 `/api/bookmarks`。Bookmark：`{id,url,title,note,folder,starred,visit_count,last_visited_at,created_at}`。url 只接受 `http`/`https`、长度 ≤2048、不含空白字符，域名需匹配 `[A-Za-z0-9._~%:-]`（拒绝 `javascript:`、`data:` 等伪协议，避免存下来的链接在前端渲染成 XSS，其他非法值 422）；title 1–160；note ≤4000；`folder` 1–60 可空（空串按 null 存，是唯一的分组维度，没有标签关联表）；`starred` 默认 false。列表按 `starred` 降序、id 降序（置顶在前）。
+
+`GET /api/bookmarks?q=&folder=` 支持关键词（标题/网址/备注，`LIKE` 包含匹配）与分组过滤：`folder` 缺省表示全部分组，`folder=` 空串表示仅未分组的条目。
+
+`POST /api/bookmarks/{id}/visit` 把 `visit_count` 加一并写入 `last_visited_at`，只更新这两个计数，不改动可编辑字段；计数失败不影响用户打开链接。
+
+`POST /api/bookmarks/title` `{url}` → `{title}`，**仅用户点击「获取标题」时调用**。后端读取目标页 `<title>`（去标签、`html.unescape`、折叠空白、截断到 160），8 秒超时、最多读 2MB、只接受 `text/*`、手动跟随最多 3 跳且每跳重新校验主机；主机为内网/回环/链路本地/保留地址时 422（域名会先解析再判定，防止指向私网的公网域名），非网页、HTTP ≥400、无标题、重定向过多同样 422；`DIGITAL_LIFE_DISABLE_METADATA=true` 时 503。站点图标不经过后端：由浏览器直接请求 `{origin}/favicon.ico`，失败时前端降级为首字母色块。
+
+导出为 `bookmarks` 数组（含 `visit_count` 与 `last_visited_at`）；导入支持 `bookmarks` 键，旧导出缺省按空处理（导入是整体替换，缺键即清空）。数据表由 Alembic `0009` 创建；CLI 恢复严格校验 `0009`。

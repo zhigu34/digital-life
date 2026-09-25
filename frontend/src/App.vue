@@ -17,6 +17,7 @@ import MaintenanceView from "./views/MaintenanceView.vue";
 import NotesView from "./views/NotesView.vue";
 import CheckInsView from "./views/CheckInsView.vue";
 import ProjectsView from "./views/ProjectsView.vue";
+import BookmarksView from "./features/bookmarks/BookmarksView.vue";
 import type { LedgerTab } from "./features/ledger/ledger";
 type GenericCollection = Exclude<Collection, "shows" | "expenses">;
 const user=ref<User|null>(null),initializing=ref(true),loading=ref(false),busy=ref(false),error=ref(""),loginError=ref(""),notice=ref("");
@@ -24,10 +25,10 @@ const records=reactive<Records>({tasks:[],expenses:[],shows:[],milestones:[],mai
 const stats=ref<Stats|null>(null),showCreateRequest=ref(0),expenseCreateRequest=ref(0),ledgerStartTab=ref<LedgerTab|null>(null);
 const page=ref<Page>("today"),moreOpen=ref(false),editing=ref<{collection:GenericCollection;item?:RecordItem}|null>(null),formError=ref("");
 const now=ref(new Date()),today=computed(()=>calendarDate(user.value?.timezone??"Asia/Shanghai",now.value));
-const navigation:[Page,string,string][]=[["today","今日概览","你的生活，此刻"],["calendar","日历",""],["tasks","待办清单",""],["projects","在做",""],["checkins","打卡",""],["expenses","记账",""],["shows","追剧片单",""],["milestones","重要日子",""],["maintenance","周期维护",""],["notes","文字随记",""]];
-const pageLabels:Record<Page,string>={today:"今日概览",calendar:"日历",tasks:"待办清单",projects:"在做",checkins:"打卡",expenses:"记账",shows:"追剧片单",milestones:"重要日子",maintenance:"周期维护",notes:"文字随记",profile:"个人设置",admin:"账户管理"};
-const mobilePrimary:Page[]=["today","calendar","tasks","checkins"],secondaryPages:Page[]=["projects","expenses","shows","milestones","maintenance","notes"];
-const mobileNavLabels:Record<string,string>={today:"今日",calendar:"日历",tasks:"待办",projects:"在做",checkins:"打卡",expenses:"记账",shows:"追剧",milestones:"日子",maintenance:"维护",notes:"随记"};
+const navigation:[Page,string,string][]=[["today","今日概览","你的生活，此刻"],["calendar","日历",""],["tasks","待办清单",""],["projects","在做",""],["checkins","打卡",""],["expenses","记账",""],["shows","追剧片单",""],["milestones","重要日子",""],["maintenance","周期维护",""],["notes","文字随记",""],["bookmarks","书签",""]];
+const pageLabels:Record<Page,string>={today:"今日概览",calendar:"日历",tasks:"待办清单",projects:"在做",checkins:"打卡",expenses:"记账",shows:"追剧片单",milestones:"重要日子",maintenance:"周期维护",notes:"文字随记",bookmarks:"书签",profile:"个人设置",admin:"账户管理"};
+const mobilePrimary:Page[]=["today","calendar","tasks","checkins"],secondaryPages:Page[]=["projects","expenses","shows","milestones","maintenance","notes","bookmarks"];
+const mobileNavLabels:Record<string,string>={today:"今日",calendar:"日历",tasks:"待办",projects:"在做",checkins:"打卡",expenses:"记账",shows:"追剧",milestones:"日子",maintenance:"维护",notes:"随记",bookmarks:"书签"};
 let noticeTimer:ReturnType<typeof setTimeout>,clockTimer:ReturnType<typeof setInterval>,accountVersion=0;
 function clear(){accountVersion++;user.value=null;setCsrf("");Object.assign(records,{tasks:[],expenses:[],shows:[],milestones:[],maintenance:[],notes:[],checkins:[],projects:[]});stats.value=null;editing.value=null;showCreateRequest.value=0;expenseCreateRequest.value=0;ledgerStartTab.value=null;page.value="today";error.value="";notice.value="";theme();}
 function notify(message:string){notice.value=message;clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>notice.value="",4200);}
@@ -76,6 +77,7 @@ onUnmounted(()=>{media.removeEventListener("change",theme);clearInterval(clockTi
       <CheckInsView v-else-if="page==='checkins'" :key="user.id" :items="records.checkins" :today="today" :parent-busy="busy" @refresh="load" @error="handleError" @notice="notify" />
       <ProjectsView v-else-if="page==='projects'" :key="user.id" :projects="records.projects" :busy="busy" @save="saveProject" @remove="removeProject" @error="handleError" />
       <NotesView v-else-if="page==='notes'" :key="user.id" :items="records.notes" :today="today" :parent-busy="busy" @refresh="load" @error="handleError" @notice="notify" />
+      <BookmarksView v-else-if="page==='bookmarks'" :key="user.id" @error="handleError" @notice="notify" />
       <ProfileView v-else-if="page==='profile'" :user="user" :busy="busy" @profile="profile" @password="password" @export="exportData" @import="importData" @logout="logout" />
       <AdminView v-else-if="page==='admin'&&user.is_admin" :user="user" @error="handleError" @notice="notify" />
     </main>

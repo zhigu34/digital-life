@@ -32,6 +32,7 @@ import {
   Rocket,
   Sparkles,
   MoreHorizontal,
+  Bookmark,
 } from "lucide-vue-next";
 const icons = {
   today: LayoutDashboard,
@@ -66,6 +67,7 @@ const icons = {
   projects: Rocket,
   sparkles: Sparkles,
   more: MoreHorizontal,
+  bookmarks: Bookmark,
 };
 withDefaults(defineProps<{ name: string; size?: number }>(), { size: 20 });
 </script>
