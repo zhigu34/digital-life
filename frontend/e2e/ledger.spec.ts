@@ -169,3 +169,19 @@ test('an unbound bill only advances the due date', async ({ page }) => {
   await tab(page, '流水')
   await expect(page.getByText('还没有一笔流水')).toBeVisible()
 })
+
+test('the record shortcut opens the form only when it is used', async ({ page }) => {
+  await login(page, await account())
+
+  // Today's empty ledger offers a shortcut that should land on a blank form.
+  await page.getByRole('button', { name: '去记账', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('button', { name: '取消', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+
+  // Coming back through the menu must not replay that one-shot request.
+  await navigate(page, '追剧片单')
+  await navigate(page, '记账')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+})
