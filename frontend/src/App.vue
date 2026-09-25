@@ -17,10 +17,11 @@ import MaintenanceView from "./views/MaintenanceView.vue";
 import NotesView from "./views/NotesView.vue";
 import CheckInsView from "./views/CheckInsView.vue";
 import ProjectsView from "./views/ProjectsView.vue";
+import type { LedgerTab } from "./features/ledger/ledger";
 type GenericCollection = Exclude<Collection, "shows" | "expenses">;
 const user=ref<User|null>(null),initializing=ref(true),loading=ref(false),busy=ref(false),error=ref(""),loginError=ref(""),notice=ref("");
 const records=reactive<Records>({tasks:[],expenses:[],shows:[],milestones:[],maintenance:[],notes:[],checkins:[],projects:[]});
-const stats=ref<Stats|null>(null),showCreateRequest=ref(0),expenseCreateRequest=ref(0);
+const stats=ref<Stats|null>(null),showCreateRequest=ref(0),expenseCreateRequest=ref(0),ledgerStartTab=ref<LedgerTab|null>(null);
 const page=ref<Page>("today"),moreOpen=ref(false),editing=ref<{collection:GenericCollection;item?:RecordItem}|null>(null),formError=ref("");
 const now=ref(new Date()),today=computed(()=>calendarDate(user.value?.timezone??"Asia/Shanghai",now.value));
 const navigation:[Page,string,string][]=[["today","今日概览","你的生活，此刻"],["calendar","日历",""],["tasks","待办清单",""],["projects","在做",""],["checkins","打卡",""],["expenses","记账",""],["shows","追剧片单",""],["milestones","重要日子",""],["maintenance","周期维护",""],["notes","文字随记",""]];
@@ -28,13 +29,13 @@ const pageLabels:Record<Page,string>={today:"今日概览",calendar:"日历",tas
 const mobilePrimary:Page[]=["today","calendar","tasks","checkins"],secondaryPages:Page[]=["projects","expenses","shows","milestones","maintenance","notes"];
 const mobileNavLabels:Record<string,string>={today:"今日",calendar:"日历",tasks:"待办",projects:"在做",checkins:"打卡",expenses:"记账",shows:"追剧",milestones:"日子",maintenance:"维护",notes:"随记"};
 let noticeTimer:ReturnType<typeof setTimeout>,clockTimer:ReturnType<typeof setInterval>,accountVersion=0;
-function clear(){accountVersion++;user.value=null;setCsrf("");Object.assign(records,{tasks:[],expenses:[],shows:[],milestones:[],maintenance:[],notes:[],checkins:[],projects:[]});stats.value=null;editing.value=null;showCreateRequest.value=0;expenseCreateRequest.value=0;page.value="today";error.value="";notice.value="";document.documentElement.dataset.theme="light";}
+function clear(){accountVersion++;user.value=null;setCsrf("");Object.assign(records,{tasks:[],expenses:[],shows:[],milestones:[],maintenance:[],notes:[],checkins:[],projects:[]});stats.value=null;editing.value=null;showCreateRequest.value=0;expenseCreateRequest.value=0;ledgerStartTab.value=null;page.value="today";error.value="";notice.value="";document.documentElement.dataset.theme="light";}
 function notify(message:string){notice.value=message;clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>notice.value="",4200);}
 function handleError(e:unknown){if(e instanceof ApiError&&e.status===401){clear();loginError.value="登录已过期，请重新登录";return;}error.value=e instanceof Error?e.message:"连接失败，请检查网络后重试";}
 async function load(){const version=accountVersion;loading.value=true;error.value="";try{const [tasks,expenses,shows,milestones,maintenance,notes,checkins,projects,statsData]=await Promise.all([api<Records["tasks"]>("/tasks"),api<Records["expenses"]>("/expenses"),api<Records["shows"]>("/shows"),api<Records["milestones"]>("/milestones"),api<Records["maintenance"]>("/maintenance"),api<Records["notes"]>("/notes"),api<Records["checkins"]>("/checkins"),api<Records["projects"]>("/projects"),api<Stats>(`/stats?end_month=${today.value.slice(0,7)}`)]);if(version===accountVersion){Object.assign(records,{tasks,expenses,shows,milestones,maintenance,notes,checkins,projects});stats.value=statsData;}}catch(e){if(version===accountVersion)handleError(e);}finally{if(version===accountVersion)loading.value=false;}}
 async function login(username:string,password:string){busy.value=true;loginError.value="";try{clear();const session=await api<{user:User;csrf_token:string}>("/auth/login","POST",{username,password});user.value=session.user;setCsrf(session.csrf_token);await load();}catch(e){loginError.value=e instanceof Error?e.message:"登录失败，请重试";}finally{busy.value=false;}}
 async function logout(){busy.value=true;try{await api("/auth/logout","POST");clear();}catch(e){handleError(e);}finally{busy.value=false;}}
-function navigate(next:Page){moreOpen.value=false;page.value=next;editing.value=null;window.scrollTo({top:0,behavior:"smooth"});}
+function navigate(next:Page,ledgerTab?:LedgerTab){moreOpen.value=false;page.value=next;editing.value=null;ledgerStartTab.value=next==="expenses"?ledgerTab??null:null;window.scrollTo({top:0,behavior:"smooth"});}
 function open(collection:GenericCollection,item?:RecordItem){formError.value="";editing.value={collection,item};}
 function createFromToday(collection:Collection){if(collection==="shows"){showCreateRequest.value++;navigate("shows");return;}if(collection==="expenses"){expenseCreateRequest.value++;navigate("expenses");return;}open(collection);}
 async function refreshStats(){try{stats.value=await api<Stats>(`/stats?end_month=${today.value.slice(0,7)}`);}catch(e){handleError(e);}}
@@ -66,7 +67,7 @@ onUnmounted(()=>{media.removeEventListener("change",theme);clearInterval(clockTi
       <CalendarView v-else-if="page==='calendar'" :records="records" :today="today" @navigate="navigate" />
       <ShowsView v-else-if="page==='shows'" :key="user.id" :stats="stats" :create-request="showCreateRequest" @sync="syncShows" @error="handleError" @notice="notify" />
       <CollectionView v-else-if="['tasks','milestones'].includes(page)" :key="page" :collection="page as 'tasks'|'milestones'" :records="records" :today="today" :busy="busy" @create="open(page as GenericCollection)" @edit="(item)=>open(page as GenericCollection,item)" @remove="(item)=>remove(page as GenericCollection,item)" @action="(id,kind,data)=>action(page as GenericCollection,id,kind,data)" />
-      <LedgerView v-else-if="page==='expenses'" :key="user.id" :stats="stats" :today="today" :bills="records.expenses" :create-request="expenseCreateRequest" @sync="syncLedger" @error="handleError" @notice="notify" />
+      <LedgerView v-else-if="page==='expenses'" :key="user.id" :stats="stats" :today="today" :bills="records.expenses" :create-request="expenseCreateRequest" :start-tab="ledgerStartTab" @sync="syncLedger" @error="handleError" @notice="notify" />
       <MaintenanceView v-else-if="page==='maintenance'" :key="user.id" :items="records.maintenance" :stats="stats" :today="today" :parent-busy="busy" @refresh="load" @error="handleError" @notice="notify" @remove="removeMaintenance" />
       <CheckInsView v-else-if="page==='checkins'" :key="user.id" :items="records.checkins" :today="today" :parent-busy="busy" @refresh="load" @error="handleError" @notice="notify" />
       <ProjectsView v-else-if="page==='projects'" :key="user.id" :projects="records.projects" :busy="busy" @save="saveProject" @remove="removeProject" @error="handleError" />

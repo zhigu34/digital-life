@@ -7,6 +7,9 @@ import type {
   StatsLedgerCategory,
 } from "../../types";
 
+/** The ledger page keeps four sections behind an inner tab bar. */
+export type LedgerTab = "entries" | "bills" | "manage" | "report";
+
 export const accountKindLabels: Record<AccountKind, string> = {
   cash: "现金",
   debit: "储蓄卡",

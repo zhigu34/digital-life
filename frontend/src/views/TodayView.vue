@@ -12,6 +12,7 @@ import {
 import { maintenanceReminders, maintenanceTiming } from "../maintenance";
 import AppIcon from "../components/AppIcon.vue";
 import EmptyState from "../components/EmptyState.vue";
+import type { LedgerTab } from "../features/ledger/ledger";
 const props = defineProps<{
   user: User;
   records: Records;
@@ -19,7 +20,7 @@ const props = defineProps<{
   busy: boolean;
 }>();
 const emit = defineEmits<{
-  navigate: [page: Page];
+  navigate: [page: Page, ledgerTab?: LedgerTab];
   create: [collection: Collection];
   complete: [id: number];
   checkin: [id: number];
@@ -136,7 +137,7 @@ const dueCheckins = computed(() =>
         ><span class="stat-bottom"
           >已完成 {{ completed }} 件<AppIcon name="up" :size="17"
         /></span></button
-      ><button class="stat-card" @click="emit('navigate', 'expenses')">
+      ><button class="stat-card" @click="emit('navigate', 'expenses', 'bills')">
         <span class="stat-top"
           ><span>账单月均</span><AppIcon name="expenses" /></span
         ><strong class="stat-money">{{
@@ -288,7 +289,7 @@ const dueCheckins = computed(() =>
           <button
             class="icon-button"
             aria-label="查看全部账单"
-            @click="emit('navigate', 'expenses')"
+            @click="emit('navigate', 'expenses', 'bills')"
           >
             <AppIcon name="up" :size="18" />
           </button>

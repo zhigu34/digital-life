@@ -10,9 +10,10 @@ import {
   type CalendarKind,
 } from "../calendar";
 import AppIcon from "../components/AppIcon.vue";
+import type { LedgerTab } from "../features/ledger/ledger";
 
 const props = defineProps<{ records: Records; today: string }>();
-const emit = defineEmits<{ navigate: [page: Page] }>();
+const emit = defineEmits<{ navigate: [page: Page, ledgerTab?: LedgerTab] }>();
 
 const [initialYear, initialMonth] = props.today.split("-").map(Number);
 const year = ref(initialYear!),
@@ -168,7 +169,7 @@ const cellEvents = (date: string): CalendarEvent[] =>
           :key="`${event.kind}-${event.id}`"
           class="compact-row calendar-event-row"
           :aria-label="`查看${kindLabels[event.kind]}：${event.title}`"
-          @click="emit('navigate', kindPages[event.kind])"
+          @click="emit('navigate', kindPages[event.kind], event.kind === 'expense' ? 'bills' : undefined)"
         >
           <span :class="['mini-symbol', event.kind]"
             ><AppIcon :name="kindIcons[event.kind]" :size="18"

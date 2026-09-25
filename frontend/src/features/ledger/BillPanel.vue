@@ -91,7 +91,8 @@ async function refresh(message: string) {
   emit("notice", message);
 }
 async function save() {
-  if (!editing.value) return;
+  // `null` means "creating a new bill"; only `undefined` means the dialog is closed.
+  if (editing.value === undefined) return;
   formError.value = "";
   const cents = Math.round(Number(form.amount) * 100);
   if (!Number.isFinite(cents) || cents < 1) {

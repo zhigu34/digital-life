@@ -3,7 +3,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import type { Expense, LedgerEntry, Stats } from "../../types";
 import { money } from "../../domain";
 import { metricCurrencies } from "../../stats";
-import { filterByAccount, monthlySummary } from "./ledger";
+import { filterByAccount, monthlySummary, type LedgerTab } from "./ledger";
 import { useLedger } from "./useLedger";
 import AppIcon from "../../components/AppIcon.vue";
 import EntryList from "./EntryList.vue";
@@ -19,6 +19,8 @@ const props = defineProps<{
   today: string;
   bills: Expense[];
   createRequest?: number;
+  /** A bill deep link (calendar, today's cards) opens on its own section. */
+  startTab?: LedgerTab | null;
 }>();
 const emit = defineEmits<{
   sync: [bills: Expense[]];
@@ -28,13 +30,13 @@ const emit = defineEmits<{
 
 const ledger = useLedger();
 const { accounts, categories, payees, entries, loading, busy, error } = ledger;
-const tabs = [
+const tabs: [LedgerTab, string][] = [
   ["entries", "流水"],
   ["bills", "账单"],
   ["manage", "管理"],
   ["report", "报表"],
-] as const;
-const tab = ref<(typeof tabs)[number][0]>("entries");
+];
+const tab = ref<LedgerTab>(props.startTab ?? "entries");
 const accountFilter = ref<number | null>(null);
 const editing = ref<LedgerEntry | null | undefined>(undefined);
 const formError = ref("");
@@ -106,6 +108,11 @@ async function refreshPayees() {
     emit("error", e);
   }
 }
+/** Confirming a bill can create an entry and move a balance, so reload both sides. */
+async function syncBills(bills: Expense[]) {
+  emit("sync", bills);
+  await reload();
+}
 
 watch(
   () => props.createRequest,
@@ -164,7 +171,7 @@ onMounted(() => {
       :stats="stats"
       :today="today"
       :busy="busy"
-      @sync="emit('sync', $event)"
+      @sync="syncBills"
       @error="emit('error', $event)"
       @notice="emit('notice', $event)"
     />
