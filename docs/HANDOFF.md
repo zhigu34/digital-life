@@ -1,5 +1,17 @@
 # Digital Life 接手状态
 
+## 2026-09-25 记账页筛选行折行 / 下拉空白 / 卡片右缘不对齐（`97fdacf`）
+
+用户贴截图说「记账样式有点问题，有些没对齐，字段转行」。先把截图当测量数据用：原图 2808×1222（2× Retina）→ 反推视口 1404 CSS、页面内容宽 1282，对上 `.page{max-width:1370;padding:0 44px}`，于是本地用 1920 视口 1:1 复现，几何完全吻合。三处根因（都有浏览器实测数据），分支 `codex/ledger-layout-fix`：
+
+1. **「账户」「月份」折成两行 + 下拉比搜索框低 7px**：工具条里的 `label`/`select` 吃到了**弹窗表单用的全局样式**（`label{margin-bottom:18px}`、`input/select/textarea{width:100%;margin-top:7px;min-width:0}`）。`margin-bottom:18px` 把筛选行撑到 57px 高、搜索框在行内居中 → 与顶部对齐的下拉错位 7px；`width:100%` + `min-width:0` 让 select 参与压缩、把 span 挤到 19.6px（不足 2 字）→ 折行。改法：`.select-field` 内的 label/select 显式 `margin:0`，select 用 `width:auto`，`span` 加 `white-space:nowrap`。注意 `.search-box` 早已写了 `margin:0`，说明同一坑踩过一次，只是 `.select-field` 漏了。
+2. **统计卡片行右缘比页面右边界短 20px（宽屏）**：`.summary-card{max-width:400px}`（本是给旧的 flex 容器防过宽）落进 `grid` 后，轨道 419px 而卡片卡在 400px，每列各留 19px。只对 `.ledger-summary` / `.report-summary` 覆盖 `max-width:none`，不动仍是 flex 的 `.expense-summary`。
+3. **账户下拉整块空白**（功能缺陷，非样式）：手写 `:value` + `@change` 的下拉用了 `<option :value="null">` —— Vue 会删掉该 option 的 value 属性使其回退成选项文本，而 `select` 的 DOM value 是空串 → 无匹配 → `selectedIndex = -1` → 显示空白。同款还有「记一笔」的账户选择与商户「合并到…」。改成 `value=""` + `:value="xxx ?? ''"`。注意 `v-model` 配 `:value="null"` **不受影响**（Vue 走 `option._value` 比较），所以同一页会出现「一个下拉正常、一个空白」。判定证据：`el.selectedIndex === -1`。
+
+验证：`vue-tsc` 0 错、Vitest 50/50、构建通过、全量 E2E 38/38（含 ledger 4 项）；分支 CI `36161905500` 与 main CI `36162711157` 的 backend / frontend / docker-e2e 三 job 均 success。修复前后对照图（同数据同取景框）见 `.local/ledger-fix-compare.png`。
+
+定位方法（截图量像素 → 反推视口/断点 → 本地 1:1 复现）已沉淀为用户级 skill `screenshot-layout-triage`。
+
 ## 2026-09-25 深色主题：画布与首帧跟随主题（`d30e58a`）
 
 用户反馈「深色主题还是很亮」。先证明「每个亮点是谁在上色」再改色值，实测确认三条根因，分支 `codex/dark-theme-canvas`：
@@ -89,7 +101,7 @@
 
 ## 接下来
 
-1. **本轮待用户执行**：NAS 上 `git pull --ff-only && ./deploy` 部署记账模块与深色主题修复（`d30e58a`，含 Alembic `0008`，部署前会自动备份旧库）。部署后在真实数据上确认两件事：旧「固定花销」记录仍出现在记账页的「账单」分区；`/api/stats` 的 `expense_due` 与升级前一致（新口径只增不改）。`expenses` 新增的三列是纯可空列、不重建表，旧记录无需处理。
+1. **本轮待用户执行**：NAS 上 `git pull --ff-only && ./deploy` 部署记账模块、深色主题修复与记账页样式修复（`10cf8fe`，含 Alembic `0008`，部署前会自动备份旧库）。部署后建议硬刷新（`Cmd/Ctrl + Shift + R`）丢掉旧 CSS 缓存，并在真实数据上确认三件事：深色下卡片之间留白不再是米白、切换主题后刷新首帧即深色；旧「固定花销」记录仍出现在记账页的「账单」分区；`/api/stats` 的 `expense_due` 与升级前一致（新口径只增不改）。`expenses` 新增的三列是纯可空列、不重建表，旧记录无需处理。
 2. NAS 首次部署已于 2026-09-16 由用户确认成功（用户反馈；本会话未远程连接 NAS 复核）。
 3. 用户在 NAS 执行 `git pull --ff-only && ./deploy`（迁移前 deploy 会自动备份旧库）。`c7439f8` 修复了 NAS 首次部署中「Web 入口到后端的健康检查」被 backend 容器出网代理拦截的问题，重新部署即可通过；基线此前未记录，本次会重新构建并落库。累计包含 Alembic `0003`–`0008` 与新增 `DIGITAL_LIFE_DISABLE_METADATA`、`DIGITAL_LIFE_TMDB_API_KEY` 配置项；追剧元数据搜索覆盖动漫、剧集、电影（双源可选，封面后端代理）；打卡回归纯每日必做，「在做」为独立功能；移动端底部导航为 5 主入口 + 更多抽屉；「周期费用」已扩为记账模块（页面键仍为 `expenses`）。
 4. 如后续通过域名公网访问，按 README 配置 HTTPS、Secure Cookie 和可信 Origin；建议先补登录失败限速和 NAS 侧自动定期备份（2026-09-16 评审提出，尚未实施，仅内网使用时可放缓）。
