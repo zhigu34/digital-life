@@ -17,7 +17,7 @@ from app.models import Base, User
 from app.schemas import UserCreate
 from app.security import hash_password
 
-SCHEMA_REVISION = "0007"
+SCHEMA_REVISION = "0008"
 
 
 def create_admin(settings: Settings, username: str, password: str):
@@ -81,8 +81,15 @@ def validate_database(path: Path):
                         raise ValueError(f"Backup column constraints do not match table {name}")
                 foreign_keys = db.execute(f'PRAGMA foreign_key_list("{name}")').fetchall()
                 actual_fks = {(row[3], row[2], row[4], row[6]) for row in foreign_keys}
+                # SQLite reports the implicit default as "NO ACTION" while the
+                # model keeps it unset; normalise before comparing.
                 expected_fks = {
-                    (fk.parent.name, fk.column.table.name, fk.column.name, fk.ondelete)
+                    (
+                        fk.parent.name,
+                        fk.column.table.name,
+                        fk.column.name,
+                        fk.ondelete or "NO ACTION",
+                    )
                     for fk in table.foreign_keys
                 }
                 if actual_fks != expected_fks:

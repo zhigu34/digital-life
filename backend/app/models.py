@@ -1,6 +1,16 @@
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -54,6 +64,13 @@ class Expense(Owned, Base):
     anchor_day: Mapped[int] = mapped_column(Integer)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     notes: Mapped[str] = mapped_column(Text, default="")
+    # Optional ledger defaults for "confirm paid". Plain integers rather than
+    # ForeignKey columns: SQLite rejects ALTER TABLE ADD COLUMN with a foreign
+    # key, and ownership is checked by the ledger endpoints (409, never a
+    # cascade delete). See migration 0008.
+    account_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    category_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    payee_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class Show(Owned, Base):
@@ -147,4 +164,66 @@ class MaintenanceLog(Base):
     notes: Mapped[str] = mapped_column(Text, default="")
     cost_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
     currency: Mapped[str] = mapped_column(String(3), default="CNY")
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class LedgerAccount(Owned, Base):
+    __tablename__ = "ledger_accounts"
+    name: Mapped[str] = mapped_column(String(40))
+    kind: Mapped[str] = mapped_column(String(10), default="debit")
+    currency: Mapped[str] = mapped_column(String(3), default="CNY")
+    # Negative opening balances are legitimate: a credit card starts in debt.
+    opening_balance_cents: Mapped[int] = mapped_column(Integer, default=0)
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class LedgerCategory(Owned, Base):
+    __tablename__ = "ledger_categories"
+    __table_args__ = (
+        UniqueConstraint("user_id", "kind", "name", name="uq_ledger_categories_user_kind_name"),
+    )
+    name: Mapped[str] = mapped_column(String(20))
+    kind: Mapped[str] = mapped_column(String(10))
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class LedgerPayee(Owned, Base):
+    __tablename__ = "ledger_payees"
+    __table_args__ = (UniqueConstraint("user_id", "name_key", name="uq_ledger_payees_user_name"),)
+    name: Mapped[str] = mapped_column(String(40))
+    # Case- and whitespace-folded name; uniqueness is enforced on this column.
+    name_key: Mapped[str] = mapped_column(String(40))
+    kind: Mapped[str] = mapped_column(String(10), default="merchant")
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class LedgerEntry(Owned, Base):
+    __tablename__ = "ledger_entries"
+    __table_args__ = (Index("ix_ledger_entries_user_occurred", "user_id", "occurred_on"),)
+    occurred_on: Mapped[date] = mapped_column(Date)
+    kind: Mapped[str] = mapped_column(String(10))
+    amount_cents: Mapped[int] = mapped_column(Integer)
+    currency: Mapped[str] = mapped_column(String(3), default="CNY")
+    account_id: Mapped[int | None] = mapped_column(ForeignKey("ledger_accounts.id"), nullable=True)
+    from_account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("ledger_accounts.id"), nullable=True
+    )
+    to_account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("ledger_accounts.id"), nullable=True
+    )
+    category_id: Mapped[int | None] = mapped_column(
+        ForeignKey("ledger_categories.id"), nullable=True
+    )
+    payee_id: Mapped[int | None] = mapped_column(ForeignKey("ledger_payees.id"), nullable=True)
+    note: Mapped[str] = mapped_column(Text, default="")
+    # Set when a recurring bill generated this entry; deleting the bill keeps the entry.
+    expense_id: Mapped[int | None] = mapped_column(
+        ForeignKey("expenses.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime)

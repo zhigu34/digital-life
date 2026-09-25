@@ -153,7 +153,7 @@ def test_migrate_0005_to_0006_moves_ongoing_checkins_to_projects(tmp_path):
         assert [row["title"] for row in checkins] == ["健身"]
         assert checkins[0]["total_count"] == 1
     with sqlite3.connect(settings.database_path) as db:
-        assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0007",)
+        assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0008",)
         assert db.execute("PRAGMA foreign_key_check").fetchall() == []
         leftover = db.execute("SELECT COUNT(*) FROM checkin_logs").fetchone()[0]
         assert leftover == 1
