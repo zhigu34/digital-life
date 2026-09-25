@@ -92,7 +92,7 @@ function totalsText(totals: Record<string, number>) {
         </button>
       </div>
       <div class="ledger-filters">
-        <label class="select-field"><span>账户</span><select :value="accountFilter" @change="emit('update:accountFilter', Number(($event.target as HTMLSelectElement).value) || null)"><option :value="null">全部账户</option><option v-for="row in accounts" :key="row.id" :value="row.id">{{ row.name }}</option></select></label>
+        <label class="select-field"><span>账户</span><select :value="accountFilter ?? ''" @change="emit('update:accountFilter', Number(($event.target as HTMLSelectElement).value) || null)"><option value="">全部账户</option><option v-for="row in accounts" :key="row.id" :value="row.id">{{ row.name }}</option></select></label>
         <label class="select-field"><span>月份</span><select v-model="month"><option value="all">全部月份</option><option v-for="value in monthOptions" :key="value" :value="value">{{ value.replace('-', ' 年 ') }} 月</option></select></label>
         <label class="search-box"><AppIcon name="search" :size="17" /><input v-model="search" aria-label="搜索流水" placeholder="搜索备注、商户、分类…" /></label>
       </div>

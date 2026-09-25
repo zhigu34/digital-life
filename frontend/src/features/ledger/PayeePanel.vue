@@ -81,8 +81,8 @@ async function merge(item: LedgerPayee) {
       <li v-for="item in sorted" :key="item.id" class="chip-row" :class="{ inactive: item.archived }">
         <span>{{ item.name }}<span v-if="item.archived" class="tag">已归档</span></span>
         <span class="chip-actions merge-actions">
-          <select :value="mergeInto[item.id] ?? null" @change="mergeInto = { ...mergeInto, [item.id]: Number(($event.target as HTMLSelectElement).value) || null }">
-            <option :value="null">合并到…</option>
+          <select :value="mergeInto[item.id] ?? ''" @change="mergeInto = { ...mergeInto, [item.id]: Number(($event.target as HTMLSelectElement).value) || null }">
+            <option value="">合并到…</option>
             <option v-for="row in sorted" :key="row.id" :value="row.id" :disabled="row.id === item.id">{{ row.name }}</option>
           </select>
           <button class="text-button" :disabled="!mergeInto[item.id]" @click="merge(item)">合并</button>

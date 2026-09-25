@@ -28,6 +28,12 @@
   gap: 12px;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
 }
+/* Inside a grid the track already caps the width; keeping the card's own
+   max-width would leave the row short of the page's right edge on wide screens. */
+.ledger-summary .summary-card,
+.report-summary .summary-card {
+  max-width: none;
+}
 .ledger-tabs {
   margin: 6px 0 4px;
 }
@@ -46,10 +52,20 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  /* The label already reads as one field: drop the form spacing of `label`. */
+  margin: 0;
   font-size: 13px;
   color: var(--muted);
 }
+.select-field > span {
+  /* 账户 / 月份 are two-character labels; never let them break across lines. */
+  white-space: nowrap;
+}
 .select-field select {
+  /* Undo the shared form rules (width:100% / margin-top) so the control keeps
+     its own content width and stays on the same line as the search box. */
+  width: auto;
+  margin: 0;
   padding: 6px 10px;
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -316,6 +332,9 @@
   gap: 4px;
 }
 .merge-actions select {
+  /* Same shared-form leftovers as .select-field: reset them to stay in line. */
+  width: auto;
+  margin: 0;
   padding: 4px 6px;
   border: 1px solid var(--border);
   border-radius: 8px;

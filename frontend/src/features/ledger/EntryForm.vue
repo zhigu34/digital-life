@@ -154,7 +154,7 @@ async function save() {
         <label>转出账户<select v-model="form.from_account_id" required><option :value="null" disabled>请选择</option><option v-for="row in accounts" :key="row.id" :value="row.id">{{ row.name }}（{{ row.currency }}）</option></select></label>
         <label>转入账户<select v-model="form.to_account_id" required><option :value="null" disabled>请选择</option><option v-for="row in accounts" :key="row.id" :value="row.id">{{ row.name }}（{{ row.currency }}）</option></select></label>
       </div>
-      <label v-else>账户<select :value="form.account_id" required @change="pickAccount(Number(($event.target as HTMLSelectElement).value))"><option :value="null" disabled>请选择</option><option v-for="row in accounts" :key="row.id" :value="row.id">{{ row.name }}（{{ row.currency }}）</option></select></label>
+      <label v-else>账户<select :value="form.account_id ?? ''" required @change="pickAccount(Number(($event.target as HTMLSelectElement).value))"><option value="" disabled>请选择</option><option v-for="row in accounts" :key="row.id" :value="row.id">{{ row.name }}（{{ row.currency }}）</option></select></label>
 
       <template v-if="!isTransfer">
         <div class="form-grid">
