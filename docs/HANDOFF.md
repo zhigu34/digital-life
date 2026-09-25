@@ -1,5 +1,19 @@
 # Digital Life 接手状态
 
+## 2026-09-25 深色主题：画布与首帧跟随主题（`d30e58a`）
+
+用户反馈「深色主题还是很亮」。先证明「每个亮点是谁在上色」再改色值，实测确认三条根因，分支 `codex/dark-theme-canvas`：
+
+1. **文档画布不跟主题（主因）**：`styles.css` 的 `:root` 写的是字面值 `color: #2c3831` / `background: #f8f9f5`，而 `[data-theme="dark"]` 只覆盖 8 个自定义属性；`body` / `.app-shell` / `.main-shell` / `.page` 全透明（只有 `.topbar` 用 `var(--bg)`），所以卡片之间所有留白露出的都是永远浅色的 html 画布 —— 实测深色下 `getComputedStyle(html).backgroundColor` = `rgb(248,249,245)`，留白点逐层追祖先只有 `html` 在着色，整页像「深色卡片飘在亮米色画布上」。改为 `var(--ink)` / `var(--bg)` 并补 `color-scheme: light`；顺带修掉「未显式设色的文字继承浅色墨色、在深色卡片上暗到几乎看不见」（统计卡的数字就是）。
+2. **首帧必然浅色**：主题值要等 `GET /api/auth/session` 回来才知道，而 `index.html` 没有预置脚本、也没有缓存偏好（实测 `t=32ms` 已画出暖白、`t=41ms` 才拿到 `dark`），启动屏 `.initial-loading` 自身无背景色 → **每次打开/刷新都是满屏白**。改为 `<head>` 内联脚本在样式生效前读 `localStorage['digital-life-theme']` 定主题；服务端 `user.theme` 仍是权威值，登录后由 `App.vue` 的 `theme()` 覆盖缓存。
+3. **登出把主题硬设回 `light`**：`clear()` 里那句使偏好不被记住、登录页恒为浅色。改为调 `theme()` 按缓存/系统重算。
+
+同时补齐深色块缺失的覆盖：登录页装饰（`.orbit-core` / `.orbit-chip` / `.orbit-ring`）、报错与危险操作（`.form-error` / `.global-error` / `.danger-hover` / `.button.danger-ghost`）、`.show-score` / `.show-cover img` / `.poster-thumb` / `.avatar`。`AGENTS.md` 已记录主题机制与「新增浅色字面值必须同步补深色覆盖」的约束。
+
+验证：首帧采样 `attr` 即 `dark`、画布 `rgb(24,35,30)`；留白点上色来源只剩 `html → rgb(24,35,30)`；自写亮度扫描（面积 ≥1200px²、亮度 ≥0.62）在桌面 8 个页面跑到「无」，手机 390×844 目视无亮块；Vitest 50 项、`vue-tsc`、构建、全量 E2E 38 项全绿；分支 CI `36152037588` 与 main CI `36152953255` 的 backend / frontend / docker-e2e 三 job 均 success。
+
+排查方法（首帧时序采样、逐点追「谁在着色」、全量亮度扫描）已沉淀为用户级 skill `dark-theme-brightness-audit`，后续改深色可直接复用。
+
 ## 2026-09-25 周期费用改造为记账模块
 
 原「固定花销」只做推算：知道下次该付多少，但不知道钱实际从哪出、去了哪。本轮把它扩成完整的个人记账模块，分四批完成，分支 `codex/ledger`：
@@ -75,7 +89,7 @@
 
 ## 接下来
 
-1. **本轮待用户执行**：NAS 上 `git pull --ff-only && ./deploy` 部署记账模块（`84906c1`，含 Alembic `0008`，部署前会自动备份旧库）。部署后在真实数据上确认两件事：旧「固定花销」记录仍出现在记账页的「账单」分区；`/api/stats` 的 `expense_due` 与升级前一致（新口径只增不改）。`expenses` 新增的三列是纯可空列、不重建表，旧记录无需处理。
+1. **本轮待用户执行**：NAS 上 `git pull --ff-only && ./deploy` 部署记账模块与深色主题修复（`d30e58a`，含 Alembic `0008`，部署前会自动备份旧库）。部署后在真实数据上确认两件事：旧「固定花销」记录仍出现在记账页的「账单」分区；`/api/stats` 的 `expense_due` 与升级前一致（新口径只增不改）。`expenses` 新增的三列是纯可空列、不重建表，旧记录无需处理。
 2. NAS 首次部署已于 2026-09-16 由用户确认成功（用户反馈；本会话未远程连接 NAS 复核）。
 3. 用户在 NAS 执行 `git pull --ff-only && ./deploy`（迁移前 deploy 会自动备份旧库）。`c7439f8` 修复了 NAS 首次部署中「Web 入口到后端的健康检查」被 backend 容器出网代理拦截的问题，重新部署即可通过；基线此前未记录，本次会重新构建并落库。累计包含 Alembic `0003`–`0008` 与新增 `DIGITAL_LIFE_DISABLE_METADATA`、`DIGITAL_LIFE_TMDB_API_KEY` 配置项；追剧元数据搜索覆盖动漫、剧集、电影（双源可选，封面后端代理）；打卡回归纯每日必做，「在做」为独立功能；移动端底部导航为 5 主入口 + 更多抽屉；「周期费用」已扩为记账模块（页面键仍为 `expenses`）。
 4. 如后续通过域名公网访问，按 README 配置 HTTPS、Secure Cookie 和可信 Origin；建议先补登录失败限速和 NAS 侧自动定期备份（2026-09-16 评审提出，尚未实施，仅内网使用时可放缓）。
