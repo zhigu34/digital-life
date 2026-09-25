@@ -99,9 +99,11 @@
 - deploy 完善验证提交：`17afac9`；[main Actions #35043909280](https://github.com/zhigu34/digital-life/actions/runs/35043909280) 的 backend、frontend、docker-e2e 均为 success。部署脚本参照 camera-recorder 重写：彩色输出与完整 `--help`、`--no-build`、构建错误摘要、变更文件列表、成功地址输出；部署前校验基础镜像架构与拉取、Web 端口冲突、磁盘空间与目录可写；健康检查失败状态立即终止；`DEPLOY_BUILD_VERBOSE`、`DEPLOY_AUTO_PULL`、`DEPLOY_SKIP_PORT_CHECK` 环境变量。未改动 camera-recorder 项目；未自动执行 docker prune，地址池耗尽仅提示手动处理。
 - NAS 真实部署排障提交：`c7439f8`。首次部署时 backend/frontend 容器均 healthy，但「Web 入口到后端的健康检查」失败：该检查从 backend 容器内请求 `http://frontend/health`，被容器携带的出网代理（`HTTP_PROXY` 等）拦截。修复为 exec 时清空代理变量直连内网，compose 的 `NO_PROXY` 默认追加 `frontend`；另修复 `logs/deploy.log` 每次部署被清空导致失败现场丢失的问题，改为保留前一份为 `deploy.log.1`。新增 2 条回归测试，本地 19 项全部通过。
 
+- 书签模块验证（分支 `codex/bookmarks`，提交 `87e4c6b`）：后端新增 `app/bookmarks/` 域包与 Alembic `0009`，16 项定向测试（增删改查、双账号越权、URL 伪协议与超长校验、分组与搜索过滤、访问计数、导入导出往返、内网与保留地址拒绝、功能禁用 503）；全量后端 189 项 pytest 通过。前端新增 `features/bookmarks/`，50 项 Vitest、vue-tsc 与生产构建通过；本地 Playwright 46 项（桌面/手机）全通过，其中书签 8 项覆盖添加、分组、搜索、下拉筛选（含未分组）、编辑、删除与非法协议提示。移动端在「更多」抽屉内的入口为「书签」。分支 CI [Actions #36176652551](https://github.com/zhigu34/digital-life/actions/runs/36176652551) 的 backend、frontend、docker-e2e 均为 success。标题获取是唯一新增的后端出站请求，已限制为手动触发且拒绝内网目标；站点图标由浏览器直连，后端不代理。
+
 ## 接下来
 
-1. **本轮待用户执行**：NAS 上 `git pull --ff-only && ./deploy` 部署记账模块、深色主题修复与记账页样式修复（`10cf8fe`，含 Alembic `0008`，部署前会自动备份旧库）。部署后建议硬刷新（`Cmd/Ctrl + Shift + R`）丢掉旧 CSS 缓存，并在真实数据上确认三件事：深色下卡片之间留白不再是米白、切换主题后刷新首帧即深色；旧「固定花销」记录仍出现在记账页的「账单」分区；`/api/stats` 的 `expense_due` 与升级前一致（新口径只增不改）。`expenses` 新增的三列是纯可空列、不重建表，旧记录无需处理。
+1. **本轮待用户执行**：NAS 上 `git pull --ff-only && ./deploy` 部署书签模块（提交 `87e4c6b`，含 Alembic `0009`，CLI 恢复版本同步升至 `0009`），顺带部署此前待上线的记账模块、深色主题修复与记账页样式修复（`10cf8fe`，含 Alembic `0008`）。部署前会自动备份旧库；`bookmarks` 是新增表，不影响既有记录。书签页面状态独立，不在今日概览展示，入口在侧栏底部与移动端「更多」抽屉。部署后建议硬刷新（`Cmd/Ctrl + Shift + R`）丢掉旧 CSS 缓存，并在真实数据上确认三件事：深色下卡片之间留白不再是米白、切换主题后刷新首帧即深色；旧「固定花销」记录仍出现在记账页的「账单」分区；`/api/stats` 的 `expense_due` 与升级前一致（新口径只增不改）。`expenses` 新增的三列是纯可空列、不重建表，旧记录无需处理。
 2. NAS 首次部署已于 2026-09-16 由用户确认成功（用户反馈；本会话未远程连接 NAS 复核）。
 3. 用户在 NAS 执行 `git pull --ff-only && ./deploy`（迁移前 deploy 会自动备份旧库）。`c7439f8` 修复了 NAS 首次部署中「Web 入口到后端的健康检查」被 backend 容器出网代理拦截的问题，重新部署即可通过；基线此前未记录，本次会重新构建并落库。累计包含 Alembic `0003`–`0008` 与新增 `DIGITAL_LIFE_DISABLE_METADATA`、`DIGITAL_LIFE_TMDB_API_KEY` 配置项；追剧元数据搜索覆盖动漫、剧集、电影（双源可选，封面后端代理）；打卡回归纯每日必做，「在做」为独立功能；移动端底部导航为 5 主入口 + 更多抽屉；「周期费用」已扩为记账模块（页面键仍为 `expenses`）。
 4. 如后续通过域名公网访问，按 README 配置 HTTPS、Secure Cookie 和可信 Origin；建议先补登录失败限速和 NAS 侧自动定期备份（2026-09-16 评审提出，尚未实施，仅内网使用时可放缓）。
