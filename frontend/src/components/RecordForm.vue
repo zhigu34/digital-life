@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { reactive, ref } from "vue";
+import { reactive } from "vue";
 import type { Collection, RecordItem } from "../types";
 import AppIcon from "./AppIcon.vue";
 import ModalDialog from "./ModalDialog.vue";
 
-type GenericCollection = Exclude<Collection, "shows">;
+type GenericCollection = Exclude<Collection, "shows" | "expenses">;
 
 const props = defineProps<{
   collection: GenericCollection;
@@ -20,45 +20,23 @@ const emit = defineEmits<{
 }>();
 const titles: Record<GenericCollection, string> = {
   tasks: "待办",
-  expenses: "周期费用",
   milestones: "重要日子",
 };
 const defaults: Record<GenericCollection, Record<string, any>> = {
   tasks: { title: "", notes: "", status: "todo", due_date: "", priority: "normal" },
-  expenses: {
-    title: "",
-    notes: "",
-    amount_cents: 0,
-    currency: "CNY",
-    period_months: 1,
-    next_due: props.today,
-    anchor_day: Number(props.today.slice(-2)),
-    active: true,
-  },
   milestones: { title: "", notes: "", date: props.today, repeats_yearly: false },
 };
 const placeholders: Record<GenericCollection, string> = {
   tasks: "例如：读完书架上的那本书",
-  expenses: "例如：云存储订阅",
   milestones: "例如：第一次出发的日子",
 };
 const form = reactive<Record<string, any>>({ ...defaults[props.collection], ...props.item });
-const amount = ref(
-  props.item && "amount_cents" in props.item
-    ? (props.item.amount_cents / 100).toFixed(2)
-    : "",
-);
 
 function save() {
   const data = { ...form };
   delete data.id;
   delete data.created_at;
   if (props.collection === "tasks") data.due_date = data.due_date || null;
-  if (props.collection === "expenses") {
-    data.amount_cents = Math.round(Number(amount.value) * 100);
-    data.period_months = Number(data.period_months);
-    data.anchor_day = Number(data.anchor_day);
-  }
   emit("save", data);
 }
 </script>
@@ -78,17 +56,6 @@ function save() {
           <label>优先级<select v-model="form.priority"><option value="low">低优先</option><option value="normal">普通</option><option value="high">高优先</option></select></label>
         </div>
         <label>截止日期 <span class="optional">选填</span><input v-model="form.due_date" type="date" /></label>
-      </template>
-
-      <template v-if="collection === 'expenses'">
-        <div class="form-grid">
-          <label>每期金额<input v-model="amount" type="number" required min="0.01" max="1000000" step="0.01" placeholder="0.00" /></label>
-          <label>币种<select v-model="form.currency"><option v-for="currency in ['CNY', 'USD', 'EUR', 'JPY', 'HKD']" :key="currency">{{ currency }}</option></select></label>
-          <label>付费周期<select v-model="form.period_months"><option :value="1">每月</option><option :value="3">每季度</option><option :value="12">每年</option></select></label>
-          <label>下次应付<input v-model="form.next_due" type="date" required @change="form.anchor_day = Number(form.next_due.slice(-2))" /></label>
-        </div>
-        <label>固定扣费日 <span class="optional">短月自动取月底</span><input v-model="form.anchor_day" type="number" min="1" max="31" required /></label>
-        <label class="checkbox-label"><input v-model="form.active" type="checkbox" />正在使用（计入费用统计）</label>
       </template>
 
       <template v-if="collection === 'milestones'">

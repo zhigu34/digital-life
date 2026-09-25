@@ -2,6 +2,7 @@ import { createApp } from "vue";
 import App from "./App.vue";
 import "./styles.css";
 import "./features/shows/shows.css";
+import "./features/ledger/ledger.css";
 createApp(App).mount("#app");
 if ("serviceWorker" in navigator && import.meta.env.PROD)
   window.addEventListener("load", () =>

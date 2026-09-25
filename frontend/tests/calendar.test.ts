@@ -169,6 +169,9 @@ describe("calendar events", () => {
       anchor_day: 20,
       active: true,
       notes: "",
+      account_id: null,
+      category_id: null,
+      payee_id: null,
     });
     records.maintenance.push(
       {

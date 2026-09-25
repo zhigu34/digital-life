@@ -1,0 +1,433 @@
+/* Ledger feature styles. Colours come from the shared tokens, with an explicit
+   dark variant for the two semantic accents (spending orange / income green). */
+.ledger-page {
+  --ledger-expense: #b77c46;
+  --ledger-income: #3f7d5a;
+}
+[data-theme="dark"] .ledger-page {
+  --ledger-expense: #d3a271;
+  --ledger-income: #8dbb99;
+}
+.expense-text,
+.ledger-amount.expense {
+  color: var(--ledger-expense, #b77c46);
+}
+.income-text,
+.ledger-amount.income {
+  color: var(--ledger-income, #3f7d5a);
+}
+.ledger-amount.transfer {
+  color: var(--muted);
+}
+.negative {
+  color: var(--ledger-expense, #b77c46);
+}
+
+.ledger-summary {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+.ledger-tabs {
+  margin: 6px 0 4px;
+}
+.ledger-toolbar {
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.ledger-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.select-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.select-field select {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+}
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--green-soft);
+  color: var(--green);
+  font-size: 13px;
+}
+
+.ledger-groups {
+  display: grid;
+  gap: 18px;
+}
+.ledger-group-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 0 2px 6px;
+  border-bottom: 1px solid var(--border);
+}
+.ledger-group-heading h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.ledger-group-heading span {
+  font-size: 12px;
+}
+.ledger-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+}
+.ledger-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--border);
+}
+.ledger-row:last-child {
+  border-bottom: 0;
+}
+.ledger-symbol {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  background: var(--soft);
+  color: var(--muted);
+}
+.ledger-symbol.expense {
+  color: var(--ledger-expense);
+}
+.ledger-symbol.income {
+  color: var(--ledger-income);
+}
+.ledger-main {
+  min-width: 0;
+}
+.ledger-main h4 {
+  margin: 0 0 2px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ledger-meta {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.ledger-note {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 260px;
+}
+.account-chip {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--soft);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.account-chip.archived {
+  opacity: 0.6;
+  text-decoration: line-through;
+}
+.ledger-amount {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.bill-tag {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+/* Bills tab */
+.bill-heading,
+.manage-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.bill-heading h2,
+.manage-heading h2 {
+  margin: 0 0 4px;
+  font-size: 17px;
+}
+.bill-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.bill-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+.bill-row.inactive {
+  opacity: 0.72;
+}
+.bill-main {
+  min-width: 0;
+}
+.bill-main h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.bill-amount {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.bill-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Manage tab */
+.ledger-manage {
+  display: grid;
+  gap: 22px;
+}
+.manage-block {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+}
+.account-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+.account-card {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--soft);
+}
+.account-card.inactive {
+  opacity: 0.72;
+}
+.account-card header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.account-balance {
+  margin: 6px 0 2px;
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.account-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+.category-groups {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+.category-group-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.category-group-heading h3 {
+  margin: 0;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.chip-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.chip-list.wide {
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+.chip-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--soft);
+  font-size: 13px;
+}
+.chip-row.inactive {
+  opacity: 0.7;
+}
+.chip-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.merge-actions select {
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12px;
+  max-width: 130px;
+}
+
+/* Report tab */
+.ledger-report {
+  display: grid;
+  gap: 18px;
+}
+.report-summary {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+.report-charts {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+.share-list,
+.payee-ranking {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.share-list li {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+.share-track {
+  display: block;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--soft);
+  overflow: hidden;
+}
+.share-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--green);
+}
+.share-value {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.share-value small {
+  color: var(--muted);
+}
+.payee-ranking li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.payee-ranking strong {
+  margin-left: auto;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger-form .entry-kind-tabs {
+  margin-bottom: 4px;
+}
+
+@media (max-width: 720px) {
+  .ledger-row {
+    grid-template-columns: 30px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "symbol main amount"
+      ". chip actions";
+    row-gap: 6px;
+  }
+  .ledger-row .ledger-symbol {
+    grid-area: symbol;
+  }
+  .ledger-row .ledger-main {
+    grid-area: main;
+  }
+  .ledger-row .account-chip {
+    grid-area: chip;
+    justify-self: start;
+  }
+  .ledger-row .ledger-amount {
+    grid-area: amount;
+  }
+  .ledger-row .record-actions {
+    grid-area: actions;
+    justify-self: end;
+  }
+  .bill-row {
+    grid-template-columns: 30px minmax(0, 1fr) auto;
+  }
+  .bill-actions {
+    grid-column: 2 / -1;
+    justify-content: flex-end;
+  }
+  .ledger-note {
+    max-width: 100%;
+  }
+}

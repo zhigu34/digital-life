@@ -27,6 +27,9 @@ export interface Expense {
   anchor_day: number;
   active: boolean;
   notes: string;
+  account_id: number | null;
+  category_id: number | null;
+  payee_id: number | null;
 }
 export interface Show {
   id: number;
@@ -106,10 +109,72 @@ export interface MaintenanceLog {
 }
 export type Collection = "tasks" | "expenses" | "shows" | "milestones";
 export type RecordItem = Task | Expense | Show | Milestone;
+export type AccountKind = "cash" | "debit" | "credit" | "ewallet" | "invest" | "other";
+export type CategoryKind = "income" | "expense";
+export type PayeeKind = "merchant" | "org" | "person";
+export type EntryKind = "income" | "expense" | "transfer";
+export const currencies = ["CNY", "USD", "EUR", "JPY", "HKD"] as const;
+export interface LedgerAccount {
+  id: number;
+  name: string;
+  kind: AccountKind;
+  currency: string;
+  opening_balance_cents: number;
+  archived: boolean;
+  sort_order: number;
+  /** Derived by the server from opening balance plus every entry. */
+  balance_cents: number;
+  created_at: string;
+}
+export interface LedgerCategory {
+  id: number;
+  name: string;
+  kind: CategoryKind;
+  archived: boolean;
+  sort_order: number;
+  created_at: string;
+}
+export interface LedgerPayee {
+  id: number;
+  name: string;
+  kind: PayeeKind;
+  archived: boolean;
+  sort_order: number;
+  created_at: string;
+}
+export interface LedgerEntry {
+  id: number;
+  occurred_on: string;
+  kind: EntryKind;
+  amount_cents: number;
+  currency: string;
+  account_id: number | null;
+  from_account_id: number | null;
+  to_account_id: number | null;
+  category_id: number | null;
+  payee_id: number | null;
+  note: string;
+  /** Set when a recurring bill generated this entry. */
+  expense_id: number | null;
+  created_at: string;
+}
 export interface StatsMonth {
   month: string;
   expense_due: Record<string, number>;
   maintenance_cost: Record<string, number>;
+  ledger_income: Record<string, number>;
+  ledger_expense: Record<string, number>;
+}
+export interface StatsLedgerCategory {
+  category_id: number;
+  name: string;
+  kind: CategoryKind;
+  totals: Record<string, number>;
+}
+export interface StatsLedgerPayee {
+  payee_id: number | null;
+  name: string;
+  totals: Record<string, number>;
 }
 export interface ShowsSummary {
   watching: number;
@@ -121,6 +186,10 @@ export interface ShowsSummary {
 export interface Stats {
   months: StatsMonth[];
   shows: ShowsSummary;
+  ledger: {
+    categories: StatsLedgerCategory[];
+    payees: StatsLedgerPayee[];
+  };
 }
 export interface Records {
   tasks: Task[];

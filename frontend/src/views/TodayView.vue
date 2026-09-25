@@ -138,7 +138,7 @@ const dueCheckins = computed(() =>
         /></span></button
       ><button class="stat-card" @click="emit('navigate', 'expenses')">
         <span class="stat-top"
-          ><span>月均成本</span><AppIcon name="expenses" /></span
+          ><span>账单月均</span><AppIcon name="expenses" /></span
         ><strong class="stat-money">{{
           costs.length ? money(costs[0]!.monthly, costs[0]!.currency) : "—"
         }}</strong
@@ -146,7 +146,7 @@ const dueCheckins = computed(() =>
           >{{
             costs.length > 1
               ? `另有 ${costs.length - 1} 种币种，点击查看`
-              : `${records.expenses.filter((e) => e.active).length} 项使用中的费用`
+              : `${records.expenses.filter((e) => e.active).length} 项使用中的账单`
           }}<AppIcon name="up" :size="17"
         /></span></button
       ><button class="stat-card" @click="emit('navigate', 'shows')">
@@ -283,11 +283,11 @@ const dueCheckins = computed(() =>
         <header class="panel-heading">
           <div>
             <span class="section-index">02</span>
-            <h2>即将到期</h2>
+            <h2>账单到期</h2>
           </div>
           <button
             class="icon-button"
-            aria-label="查看全部费用"
+            aria-label="查看全部账单"
             @click="emit('navigate', 'expenses')"
           >
             <AppIcon name="up" :size="18" />
@@ -315,9 +315,9 @@ const dueCheckins = computed(() =>
         <EmptyState
           v-else
           icon="expenses"
-          title="支出，心中有数"
-          description="添加周期费用，提前看见下一次应付日期。"
-          action="记录费用"
+          title="钱去哪了，记下来就清楚"
+          description="先记一笔开销，或添加一条周期性账单。"
+          action="去记账"
           @action="emit('create', 'expenses')"
         />
       </section>

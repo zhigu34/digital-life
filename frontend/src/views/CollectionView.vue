@@ -1,22 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import type { Collection, Records, RecordItem, Stats } from "../types";
-import {
-  labels,
-  money,
-  expenseSummary,
-  countdown,
-  daysBetween,
-} from "../domain";
-import { metricCurrencies, monthTrend, trendTotal } from "../stats";
+import type { Records, RecordItem } from "../types";
+import { labels, countdown, daysBetween } from "../domain";
 import AppIcon from "../components/AppIcon.vue";
 import EmptyState from "../components/EmptyState.vue";
-import BarChart from "../components/BarChart.vue";
 
 const props = defineProps<{
-  collection: Collection;
+  collection: "tasks" | "milestones";
   records: Records;
-  stats: Stats | null;
   today: string;
   busy: boolean;
 }>();
@@ -36,14 +27,6 @@ const config = {
     add: "添加待办",
     empty: "从一件小事开始",
     hint: "记下今天想完成的事，不必一次安排整个生活。",
-  },
-  expenses: {
-    title: "周期费用",
-    kicker: "KNOW WHERE IT GOES",
-    description: "每一笔持续的支出，都心中有数。",
-    add: "添加费用",
-    empty: "给固定支出一个位置",
-    hint: "记录订阅、会员或房租，到期时手动确认付款。",
   },
   milestones: {
     title: "重要日子",
@@ -65,27 +48,6 @@ const filtered = computed(() =>
         ("status" in item && item.status === filter.value)),
   ),
 );
-const summaries = computed(() =>
-  expenseSummary(props.records.expenses, props.today),
-);
-const expenseCurrencies = computed(() =>
-  props.stats ? metricCurrencies(props.stats.months, "expense_due") : [],
-);
-const statsCurrency = ref("");
-const activeCurrency = computed(
-  () => statsCurrency.value || expenseCurrencies.value[0] || "CNY",
-);
-const expenseTrend = computed(() =>
-  props.stats && props.collection === "expenses" && expenseCurrencies.value.length
-    ? monthTrend(
-        props.stats,
-        "expense_due",
-        activeCurrency.value,
-        (value, currency) => money(value, currency),
-      )
-    : [],
-);
-const expenseTrendTotal = computed(() => trendTotal(expenseTrend.value));
 const tabs = computed(() =>
   props.collection === "tasks"
     ? ["all", "todo", "doing", "waiting", "done"]
@@ -118,63 +80,6 @@ const dueLabel = (date: string) => {
         <AppIcon name="plus" :size="18" />{{ current.add }}
       </button>
     </header>
-
-    <section v-if="collection === 'expenses'" class="expense-summary">
-      <div v-if="!summaries.length" class="summary-card">
-        <span>月均成本</span><strong>—</strong><small>添加费用后自动计算</small>
-      </div>
-      <div
-        v-for="summary in summaries"
-        :key="summary.currency"
-        class="summary-card"
-      >
-        <span>{{ summary.currency }} · 月均成本</span
-        ><strong>{{ money(summary.monthly, summary.currency) }}</strong
-        ><small
-          >本月应付 <b>{{ money(summary.due, summary.currency) }}</b></small
-        >
-      </div>
-      <p class="summary-note">
-        月均成本将每期金额按月摊分；本月应付按费用周期推算，分别统计各币种。确认已付只推进下次日期，不记录银行交易。
-      </p>
-    </section>
-
-    <section
-      v-if="collection === 'expenses' && expenseTrend.length"
-      class="panel trend-panel"
-      aria-label="近十二个月应付趋势"
-    >
-      <header class="panel-heading">
-        <div>
-          <span class="section-index">TREND</span>
-          <h2>近 12 个月应付</h2>
-        </div>
-        <div class="trend-head-right">
-          <strong class="trend-total"
-            >{{ money(expenseTrendTotal, activeCurrency) }}<small>合计</small></strong
-          >
-          <div v-if="expenseCurrencies.length > 1" class="tabs" aria-label="币种筛选">
-            <button
-              v-for="currency in expenseCurrencies"
-              :key="currency"
-              :class="{ active: currency === activeCurrency }"
-              @click="statsCurrency = currency"
-            >
-              {{ currency }}
-            </button>
-          </div>
-        </div>
-      </header>
-      <div class="trend-body">
-        <BarChart
-          :points="expenseTrend"
-          chart-title="近十二个月每月应付金额柱状图"
-        />
-        <p class="summary-note">
-          按费用周期从下次应付日外推各月应付，未确认付款也会计入；停用的费用不计。
-        </p>
-      </div>
-    </section>
 
     <div class="collection-toolbar">
       <div v-if="tabs.length" class="tabs" aria-label="状态筛选">
@@ -258,43 +163,6 @@ const dueLabel = (date: string) => {
               >
             </div>
           </div></template
-        ><template v-if="collection === 'expenses' && 'amount_cents' in item"
-          ><span class="record-symbol" :class="{ inactive: !item.active }"
-            ><AppIcon name="expenses"
-          /></span>
-          <div class="record-body">
-            <h3>
-              {{ item.title
-              }}<span v-if="!item.active" class="tag">已停用</span>
-            </h3>
-            <p class="record-notes">
-              {{ item.notes || "给每一笔固定支出，留一份清楚的记录" }}
-            </p>
-            <div class="record-meta">
-              <span
-                :class="{ 'text-orange': item.next_due < today && item.active }"
-                ><AppIcon name="calendar" :size="13" />{{
-                  dueLabel(item.next_due)
-                }}</span
-              ><span>{{
-                item.period_months === 1
-                  ? "月付"
-                  : item.period_months === 3
-                    ? "季付"
-                    : "年付"
-              }}</span>
-            </div>
-          </div>
-          <div class="expense-amount">
-            <strong>{{ money(item.amount_cents, item.currency) }}</strong
-            ><button
-              v-if="item.active"
-              class="text-button"
-              :disabled="busy"
-              @click="emit('action', item.id, 'pay')"
-            >
-              确认本期已付<AppIcon name="chevron" :size="14" />
-            </button></div></template
         ><template
           v-if="collection === 'milestones' && 'repeats_yearly' in item"
           ><div class="milestone-top">

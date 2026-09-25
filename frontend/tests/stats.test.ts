@@ -10,12 +10,37 @@ import type { Stats } from "../src/types";
 
 const stats = (): Stats => ({
   months: [
-    { month: "2025-10", expense_due: { CNY: 3000 }, maintenance_cost: {} },
-    { month: "2025-11", expense_due: { CNY: 3000, USD: 1500 }, maintenance_cost: {} },
-    { month: "2025-12", expense_due: { CNY: 3000 }, maintenance_cost: { CNY: 8000 } },
-    { month: "2026-01", expense_due: {}, maintenance_cost: {} },
+    {
+      month: "2025-10",
+      expense_due: { CNY: 3000 },
+      maintenance_cost: {},
+      ledger_income: { CNY: 1200000 },
+      ledger_expense: { CNY: 25000 },
+    },
+    {
+      month: "2025-11",
+      expense_due: { CNY: 3000, USD: 1500 },
+      maintenance_cost: {},
+      ledger_income: { CNY: 1200000 },
+      ledger_expense: { CNY: 30000 },
+    },
+    {
+      month: "2025-12",
+      expense_due: { CNY: 3000 },
+      maintenance_cost: { CNY: 8000 },
+      ledger_income: { CNY: 1200000 },
+      ledger_expense: { CNY: 8000 },
+    },
+    {
+      month: "2026-01",
+      expense_due: {},
+      maintenance_cost: {},
+      ledger_income: {},
+      ledger_expense: {},
+    },
   ],
   shows: { watching: 1, planned: 2, completed: 3, paused: 0, episodes_watched: 41 },
+  ledger: { categories: [], payees: [] },
 });
 
 describe("stats helpers", () => {
@@ -39,5 +64,11 @@ describe("stats helpers", () => {
     expect(points.map((point) => point.value)).toEqual([3000, 3000, 3000, 0]);
     expect(points[0]).toMatchObject({ label: "25年10月", title: "2025年10月 3000" });
     expect(trendTotal(points)).toBe(9000);
+  });
+  it("exposes the ledger metric keys", () => {
+    expect(metricCurrencies(stats().months, "ledger_income")).toEqual(["CNY"]);
+    const points = monthTrend(stats(), "ledger_expense", "CNY", (v) => `${v}`);
+    expect(points.map((point) => point.value)).toEqual([25000, 30000, 8000, 0]);
+    expect(trendTotal(points)).toBe(63000);
   });
 });

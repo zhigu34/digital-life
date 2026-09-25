@@ -1,5 +1,12 @@
 import type { Stats, StatsMonth } from "./types";
 
+/** Per-month money buckets the stats endpoint exposes. */
+export type MetricKey =
+  | "expense_due"
+  | "maintenance_cost"
+  | "ledger_income"
+  | "ledger_expense";
+
 /** Short month label; the first bar and every January also carry the year. */
 export function monthLabel(month: string, isFirst: boolean): string {
   const [year, number] = month.split("-");
@@ -14,7 +21,7 @@ export function fullMonthLabel(month: string): string {
 /** Currencies that actually appear in the chosen metric, CNY first. */
 export function metricCurrencies(
   months: StatsMonth[],
-  key: "expense_due" | "maintenance_cost",
+  key: MetricKey,
 ): string[] {
   const found = new Set<string>();
   for (const entry of months)
@@ -32,7 +39,7 @@ export interface TrendPoint {
 
 export function monthTrend(
   stats: Stats,
-  key: "expense_due" | "maintenance_cost",
+  key: MetricKey,
   currency: string,
   format: (value: number, currency: string) => string,
 ): TrendPoint[] {
