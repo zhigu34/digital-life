@@ -7,15 +7,16 @@
 1. `f188d03` 后端记账域：迁移 `0008` 新建 `ledger_accounts` / `ledger_categories` / `ledger_payees` / `ledger_entries` 四表，`expenses` 增可空 `account_id` / `category_id` / `payee_id`；新增 `app/ledger/{schemas,service,router}.py`（`/api/ledger` 下账户/分类/商户/流水四组增删改查 + 商户合并 + 派生余额 + 幂等默认分类播种）；`app/main.py` 挂载；CLI 恢复版本升至 `0008`。
 2. `e29e745` 账单联动：`POST /expenses/{id}/pay` 接受可选账户/分类/商户，最终生效账户非空时**在同一事务内补一条支出流水**并回传 `entry_id`；非交易类字段在推进 `next_due` **之前**校验。`/stats` 增加 `ledger_income` / `ledger_expense`（按 `occurred_on` 归集、转账排除）与 `ledger.categories` / `ledger.payees`，与既有的「推算应付」并列；导出/导入补四个记账集合（余额不导出，商户按归一化名合并，id 全量重映射，悬空引用 422）。同时抽出 `app/timezones.py` 作为 `user_today()` / `validate_timezone()` 的唯一归属地，拆掉 `records ↔ ledger ↔ maintenance` 的导入环。
 3. `e074049` 前端：新增 `frontend/src/features/ledger/`（`LedgerView` 流水/账单/管理/报表四分区 + `EntryList` / `EntryForm` / `BillPanel` / `AccountPanel` / `CategoryPanel` / `PayeePanel` / `ReportPanel` / `api.ts` / `useLedger.ts` / 纯派生 `ledger.ts` / `ledger.css`）。导航项「周期费用」改名「记账」（**页面键仍是 `expenses`**，保住 `calendar.ts` 的 `kindPages` 与深链）；`CollectionView` / `RecordForm` 收窄为待办与重要日子，旧的固定花销表单与统计分支移除。
-4. `2d4d20a` + `38b9fe2` 修复与收尾：新增 `frontend/e2e/ledger.spec.ts`，把 `workspace.spec.ts` 里三处指向旧「周期费用」页的用例迁到记账页的「账单」分区；同步 `docs/contracts/api.md`（新增「记账」小节 + `Expense` / `/pay` / `/export` / `/import` / `/stats` 口径）、`AGENTS.md`、`README.md`。
+4. `2d4d20a` + `38b9fe2` + `84906c1` 修复与收尾：新增 `frontend/e2e/ledger.spec.ts`，把 `workspace.spec.ts` 里三处指向旧「周期费用」页的用例迁到记账页的「账单」分区；同步 `docs/contracts/api.md`（新增「记账」小节 + `Expense` / `/pay` / `/export` / `/import` / `/stats` 口径）、`AGENTS.md`、`README.md`。`84906c1` 另修掉一次性新建请求在导航之间残留（见下），`ledger.spec.ts` 现为 4 条用例。
 
-**本地真实浏览器测试抓到了三个单测与类型检查都抓不到的缺陷**（`2d4d20a` 修复）：
+**本地真实浏览器测试抓到了四个单测与类型检查都抓不到的缺陷**（`2d4d20a`、`84906c1` 修复）：
 
 - `BillPanel.save()` 的守卫写成 `if (!editing.value) return`。`editing` 用 `null` 表示「新建」、`undefined` 表示「弹窗已关闭」，两者被混为一谈，于是**从界面添加账单永远静默失败**（提交被拦、无任何错误提示）。改为只拦 `undefined`。
 - 账单确认已付会补一笔流水，但 `LedgerView` 转发 `sync` 时只更新账单快照、没有再取记账数据，导致流水页看不到这笔流水、管理页余额停在旧值。
 - 账单深链一律落在记账页首屏「流水」分区：从日历点账单事件、或从今日概览的账单卡片与「查看全部账单」进入，都看不到那条账单，相对旧版属回退。改为由来源声明目标分区（`navigate(page, ledgerTab?)`，`LedgerView` 用 `startTab` 在挂载时初始化，不用 watch，避免残留状态）。
+- 一次性新建请求在导航之间残留：`navigate()` 只重置起始分区、没有清零 `showCreateRequest` / `expenseCreateRequest`，而 `createFromToday` 是「先自增再导航」；视图在离开页面时被销毁（`v-else-if`），`LedgerView` 里等下一次自增的 `watch` 永远等不到，残留计数于是被重新挂载时的 `onMounted` 读到 —— 从今日概览点过一次「去记账」之后，**此后每次进入记账页都会自动弹出「记一笔」**。改为 `navigate()` 清零两个计数器、自增移到导航之后；`ShowsView` 的「添加作品」是同一写法同一症状，一并修好。
 
-验证：本地后端 `pytest` 172 项通过、`ruff check` 与 `ruff format --check` 通过；前端 Vitest 50 项、`vue-tsc` 类型检查、生产构建通过；**Playwright 36 项（桌面 + 手机两个 viewport）全绿**。分支 CI run `36099895216`（head `38b9fe2`）的 backend、frontend、docker-e2e 三个 job 全部 success；随后以 `git merge --ff-only` 合入 `main` 并推送至 `38b9fe2`，main 上的 CI run `36100414195` 三个 job 同样全部 success（本机 GitHub connector 无创建 PR 权限，403，故按既有授权走快进合并）。
+验证：本地后端 `pytest` 172 项通过、`ruff check` 与 `ruff format --check` 通过；前端 Vitest 50 项、`vue-tsc` 类型检查、生产构建通过；**Playwright 38 项（桌面 + 手机两个 viewport）全绿**。分支 CI run `36099895216`（head `38b9fe2`）与 `36119776519`（head `84906c1`）的 backend、frontend、docker-e2e 三个 job 全部 success；两次均以 `git merge --ff-only` 合入 `main` 并推送，main 上的 CI run `36100414195`（`38b9fe2`）与 `36120477546`（`84906c1`）三个 job 同样全部 success（本机 GitHub connector 无创建 PR 权限，403，故按既有授权走快进合并）。
 
 本轮**未执行 NAS 部署**，仍由用户在合入后运行 `git pull --ff-only && ./deploy`。这次带 Alembic `0008`，部署脚本会在迁移前自动备份旧库；`expenses` 新增的三列是纯可空列、不重建表，旧数据无需处理。届时应重点在真实数据上确认：旧「固定花销」记录仍出现在记账页的「账单」分区、`/api/stats` 的 `expense_due` 数值与升级前一致（新口径只增不改）。
 
@@ -74,14 +75,13 @@
 
 ## 接下来
 
-1. **本轮待用户执行**：NAS 上 `git pull --ff-only && ./deploy` 部署记账模块（`38b9fe2`，含 Alembic `0008`，部署前会自动备份旧库）。部署后在真实数据上确认两件事：旧「固定花销」记录仍出现在记账页的「账单」分区；`/api/stats` 的 `expense_due` 与升级前一致（新口径只增不改）。`expenses` 新增的三列是纯可空列、不重建表，旧记录无需处理。
+1. **本轮待用户执行**：NAS 上 `git pull --ff-only && ./deploy` 部署记账模块（`84906c1`，含 Alembic `0008`，部署前会自动备份旧库）。部署后在真实数据上确认两件事：旧「固定花销」记录仍出现在记账页的「账单」分区；`/api/stats` 的 `expense_due` 与升级前一致（新口径只增不改）。`expenses` 新增的三列是纯可空列、不重建表，旧记录无需处理。
 2. NAS 首次部署已于 2026-09-16 由用户确认成功（用户反馈；本会话未远程连接 NAS 复核）。
 3. 用户在 NAS 执行 `git pull --ff-only && ./deploy`（迁移前 deploy 会自动备份旧库）。`c7439f8` 修复了 NAS 首次部署中「Web 入口到后端的健康检查」被 backend 容器出网代理拦截的问题，重新部署即可通过；基线此前未记录，本次会重新构建并落库。累计包含 Alembic `0003`–`0008` 与新增 `DIGITAL_LIFE_DISABLE_METADATA`、`DIGITAL_LIFE_TMDB_API_KEY` 配置项；追剧元数据搜索覆盖动漫、剧集、电影（双源可选，封面后端代理）；打卡回归纯每日必做，「在做」为独立功能；移动端底部导航为 5 主入口 + 更多抽屉；「周期费用」已扩为记账模块（页面键仍为 `expenses`）。
 4. 如后续通过域名公网访问，按 README 配置 HTTPS、Secure Cookie 和可信 Origin；建议先补登录失败限速和 NAS 侧自动定期备份（2026-09-16 评审提出，尚未实施，仅内网使用时可放缓）。
 5. CI 的 backend job 只跑 `ruff check`，未跑 `ruff format --check`（`AGENTS.md` 要求本地两者都跑），导致 `main` 上 `app/shows/router.py`、`service.py` 长期格式漂移，已归位。建议给 CI 补上 format check，避免再次漂移。
 6. `frontend/` 目前无 eslint/prettier 配置，前端写法无自动约束（`App.vue` 存在超长单行压缩写法）。若引入 lint 基线，建议单独一轮做，不要与功能改动混在同一 diff。
-7. 记账模块的已知小遗留：从「今日概览」的「去记账」进入记账页后再返回并重新进入，`createRequest` 计数器仍非零，会再次自动弹出「记一笔」表单（`ShowsView` 的 `createRequest` 有同样行为，属既有写法，未在本轮一并修）。
-4. 当前没有已知阻断功能使用的问题；后续功能继续从 `main` 创建新的 `codex/` 分支。用户已授权固定交付流程：分支 CI 全绿后直接合入 `main` 推送，NAS 部署由用户执行（见 AGENTS.md 协作与交付）。
+7. 当前没有已知阻断功能使用的问题；后续功能继续从 `main` 创建新的 `codex/` 分支。用户已授权固定交付流程：分支 CI 全绿后直接合入 `main` 推送，NAS 部署由用户执行（见 AGENTS.md 协作与交付）。
 
 ## 本地与 Git 状态提示
 
