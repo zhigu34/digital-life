@@ -70,6 +70,10 @@ def test_import_replaces_account_data_from_export(accounts):
         "checkins": 0,
         "checkin_logs": 0,
         "projects": 0,
+        "ledger_accounts": 0,
+        "ledger_categories": 0,
+        "ledger_payees": 0,
+        "ledger_entries": 0,
     }
     # Importing twice replaces instead of duplicating.
     again = alice.post("/api/import", json=export, headers=headers)
@@ -163,3 +167,120 @@ def test_import_only_touches_the_callers_account(accounts):
     alice_tasks = alice.get("/api/tasks", headers=alice_headers).json()
     assert [task["title"] for task in alice_tasks] == ["导出的待办"]
     assert bob_task["title"] not in [task["title"] for task in tasks]
+
+
+def ledger_fixture(client, headers):
+    """One linked account/category/payee plus an entry and a bill using them."""
+    account = client.post(
+        "/api/ledger/accounts",
+        json={"name": "招行储蓄卡", "currency": "CNY", "opening_balance_cents": 100000},
+        headers=headers,
+    ).json()
+    category = client.post(
+        "/api/ledger/categories", json={"name": "导入餐饮", "kind": "expense"}, headers=headers
+    ).json()
+    payee = client.post("/api/ledger/payees", json={"name": "老张面馆"}, headers=headers).json()
+    entry = client.post(
+        "/api/ledger/entries",
+        json={
+            "occurred_on": "2026-09-05",
+            "kind": "expense",
+            "amount_cents": 2000,
+            "currency": "CNY",
+            "account_id": account["id"],
+            "category_id": category["id"],
+            "payee_id": payee["id"],
+            "note": "导入测试",
+        },
+        headers=headers,
+    ).json()
+    bill = client.post(
+        "/api/expenses",
+        json={
+            "title": "宽带费",
+            "amount_cents": 12900,
+            "next_due": "2026-09-20",
+            "account_id": account["id"],
+            "category_id": category["id"],
+            "payee_id": payee["id"],
+        },
+        headers=headers,
+    ).json()
+    return {"account": account, "category": category, "payee": payee, "entry": entry, "bill": bill}
+
+
+def test_import_round_trips_the_ledger_with_remapped_ids(accounts):
+    _, _, _, alice, ah, bob, bh = accounts
+    source = ledger_fixture(alice, ah)
+    export = alice.get("/api/export", headers=ah).json()
+    assert export["ledger_entries"][0]["account_id"] == source["account"]["id"]
+    assert export["ledger_entries"][0]["expense_id"] is None
+    assert export["expenses"][0]["payee_id"] == source["payee"]["id"]
+
+    result = bob.post("/api/import", json=export, headers=bh)
+    assert result.status_code == 200, result.text
+    imported = result.json()["imported"]
+    assert imported["ledger_accounts"] == 1
+    assert imported["ledger_categories"] == 1
+    assert imported["ledger_payees"] == 1
+    assert imported["ledger_entries"] == 1
+
+    accounts_of_bob = bob.get("/api/ledger/accounts", headers=bh).json()
+    assert len(accounts_of_bob) == 1
+    new_account_id = accounts_of_bob[0]["id"]
+    assert new_account_id != source["account"]["id"]
+    # Balances are derived, so the round trip reproduces them from the entries.
+    assert accounts_of_bob[0]["balance_cents"] == 100000 - 2000
+
+    rows = bob.get("/api/ledger/entries", headers=bh).json()
+    assert len(rows) == 1
+    assert rows[0]["account_id"] == new_account_id
+    assert rows[0]["note"] == "导入测试"
+    # Every reference resolves to bob's own copies, never to alice's rows.
+    new_category_id = bob.get("/api/ledger/categories", headers=bh).json()[0]["id"]
+    new_payee_id = bob.get("/api/ledger/payees", headers=bh).json()[0]["id"]
+    assert rows[0]["category_id"] == new_category_id
+    assert rows[0]["payee_id"] == new_payee_id
+
+    bill = bob.get("/api/expenses", headers=bh).json()[0]
+    assert bill["account_id"] == new_account_id
+    assert bill["category_id"] == new_category_id
+    assert bill["payee_id"] == new_payee_id
+
+
+def test_import_rejects_dangling_ledger_references(accounts):
+    _, _, _, alice, ah, bob, bh = accounts
+    ledger_fixture(alice, ah)
+    export = alice.get("/api/export", headers=ah).json()
+    bob.post("/api/ledger/accounts", json={"name": "bob 自己的卡"}, headers=bh)
+    export["ledger_entries"][0]["account_id"] = 999999
+
+    result = bob.post("/api/import", json=export, headers=bh)
+    assert result.status_code == 422
+    # A refused import leaves the caller's ledger untouched.
+    names = [row["name"] for row in bob.get("/api/ledger/accounts", headers=bh).json()]
+    assert names == ["bob 自己的卡"]
+    assert bob.get("/api/ledger/entries", headers=bh).json() == []
+
+
+def test_importing_a_pre_ledger_export_clears_the_ledger(accounts):
+    _, _, _, alice, ah, bob, bh = accounts
+    ledger_fixture(alice, ah)
+    ledger_fixture(bob, bh)
+    legacy = {
+        "user": {"username": "bob"},
+        "tasks": [{"title": "旧版待办", "status": "todo"}],
+        "expenses": [],
+        "shows": [],
+        "milestones": [],
+        "notes": [],
+        "maintenance": [],
+        "maintenance_logs": [],
+    }
+
+    result = bob.post("/api/import", json=legacy, headers=bh)
+    assert result.status_code == 200, result.text
+    assert result.json()["imported"]["ledger_entries"] == 0
+    # Replace-everything means the missing keys import as empty collections.
+    assert bob.get("/api/ledger/accounts", headers=bh).json() == []
+    assert bob.get("/api/ledger/entries", headers=bh).json() == []

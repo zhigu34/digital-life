@@ -332,3 +332,169 @@ def test_ledger_requires_session_and_validates_input(accounts):
 
     alice.cookies.clear()
     assert alice.get("/api/ledger/accounts").status_code == 401
+
+
+# --------------------------------------------------------------------------- #
+# Confirming a recurring bill as paid: the optional ledger link.
+# --------------------------------------------------------------------------- #
+
+
+def make_bill(client, headers, **overrides):
+    payload = {
+        "title": "宽带费",
+        "amount_cents": 12900,
+        "currency": "CNY",
+        "period_months": 1,
+        "next_due": "2026-09-20",
+    }
+    payload.update(overrides)
+    response = client.post("/api/expenses", json=payload, headers=headers)
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def confirm_pay(client, headers, bill_id, body=None):
+    return client.post(f"/api/expenses/{bill_id}/pay", json=body, headers=headers)
+
+
+def due_of(client, headers, bill_id):
+    response = client.get(f"/api/expenses/{bill_id}", headers=headers)
+    assert response.status_code == 200, response.text
+    return response.json()["next_due"]
+
+
+def test_pay_without_account_only_advances_the_due_date(accounts):
+    _, _, _, alice, ah, _, _ = accounts
+    bill = make_bill(alice, ah)
+
+    response = confirm_pay(alice, ah, bill["id"])
+    assert response.status_code == 200, response.text
+    assert response.json()["entry_id"] is None
+    assert response.json()["next_due"] == "2026-10-20"
+    assert alice.get("/api/ledger/entries").json() == []
+
+
+def test_pay_with_bound_account_posts_a_matching_entry(accounts):
+    _, _, _, alice, ah, _, _ = accounts
+    card = make_account(alice, ah, opening_balance_cents=100000)
+    category = make_category(alice, ah, name="宽带分类")
+    payee = make_payee(alice, ah, name="中国联通")
+    bill = make_bill(
+        alice, ah, account_id=card["id"], category_id=category["id"], payee_id=payee["id"]
+    )
+    assert bill["account_id"] == card["id"]
+
+    body = confirm_pay(alice, ah, bill["id"]).json()
+    assert body["next_due"] == "2026-10-20"
+    assert body["entry_id"] is not None
+
+    rows = alice.get("/api/ledger/entries").json()
+    assert len(rows) == 1
+    entry = rows[0]
+    assert entry["id"] == body["entry_id"]
+    assert entry["expense_id"] == bill["id"]
+    assert entry["kind"] == "expense"
+    assert entry["amount_cents"] == 12900
+    assert entry["currency"] == "CNY"
+    assert entry["account_id"] == card["id"]
+    assert entry["category_id"] == category["id"]
+    assert entry["payee_id"] == payee["id"]
+    # Defaults to "today" in the profile zone, so allow for the UTC/UTC+8 skew.
+    today = date.today()
+    assert entry["occurred_on"] in {today.isoformat(), (today + timedelta(days=1)).isoformat()}
+    assert balances_of(alice, ah)[card["id"]] == 100000 - 12900
+
+
+def test_pay_request_body_overrides_the_bill_defaults(accounts):
+    _, _, _, alice, ah, _, _ = accounts
+    bill_account = make_account(alice, ah, name="招行储蓄卡", opening_balance_cents=100000)
+    other = make_account(alice, ah, name="支付宝余额", opening_balance_cents=50000)
+    bill = make_bill(alice, ah, account_id=bill_account["id"])
+    category = make_category(alice, ah, name="宽带分类")
+
+    body = confirm_pay(
+        alice,
+        ah,
+        bill["id"],
+        {"occurred_on": recent(1), "account_id": other["id"], "category_id": category["id"]},
+    ).json()
+    entry = alice.get("/api/ledger/entries").json()[0]
+    assert body["entry_id"] == entry["id"]
+    assert entry["account_id"] == other["id"]
+    assert entry["category_id"] == category["id"]
+    assert entry["occurred_on"] == recent(1)
+    balances = balances_of(alice, ah)
+    assert balances[other["id"]] == 50000 - 12900
+    assert balances[bill_account["id"]] == 100000
+
+
+def test_pay_rejects_bad_reference_and_keeps_the_due_date(accounts):
+    _, _, _, alice, ah, bob, bh = accounts
+    card = make_account(alice, ah)
+    bill = make_bill(alice, ah, account_id=card["id"])
+    foreign = make_account(bob, bh, name="bob 的卡")
+
+    assert confirm_pay(alice, ah, bill["id"], {"account_id": foreign["id"]}).status_code == 422
+    # A refused link must not leave a bill that moved on without recording it.
+    assert due_of(alice, ah, bill["id"]) == "2026-09-20"
+    assert alice.get("/api/ledger/entries").json() == []
+
+    income = make_category(alice, ah, name="工资", kind="income")
+    assert confirm_pay(alice, ah, bill["id"], {"category_id": income["id"]}).status_code == 422
+    assert due_of(alice, ah, bill["id"]) == "2026-09-20"
+
+
+def test_pay_rejects_an_inactive_bill(accounts):
+    _, _, _, alice, ah, _, _ = accounts
+    card = make_account(alice, ah)
+    bill = make_bill(alice, ah, account_id=card["id"], active=False)
+
+    assert confirm_pay(alice, ah, bill["id"]).status_code == 400
+    assert alice.get("/api/ledger/entries").json() == []
+
+
+def test_deleting_a_bill_keeps_its_entry(accounts):
+    _, _, _, alice, ah, _, _ = accounts
+    card = make_account(alice, ah)
+    bill = make_bill(alice, ah, account_id=card["id"])
+    confirm_pay(alice, ah, bill["id"])
+
+    assert alice.delete(f"/api/expenses/{bill['id']}", headers=ah).status_code == 204
+    rows = alice.get("/api/ledger/entries").json()
+    assert len(rows) == 1
+    assert rows[0]["expense_id"] is None
+    # The entry still counts as activity, so the account cannot be deleted.
+    assert alice.delete(f"/api/ledger/accounts/{card['id']}", headers=ah).status_code == 409
+
+
+def test_bill_defaults_must_belong_to_the_caller(accounts):
+    _, _, _, alice, ah, bob, bh = accounts
+    foreign = make_account(bob, bh, name="bob 的卡")
+    payload = {"title": "宽带费", "amount_cents": 12900, "next_due": "2026-09-20"}
+
+    created = alice.post("/api/expenses", json={**payload, "account_id": foreign["id"]}, headers=ah)
+    assert created.status_code == 422
+
+    income = make_category(alice, ah, name="工资", kind="income")
+    wrong_kind = alice.post(
+        "/api/expenses", json={**payload, "category_id": income["id"]}, headers=ah
+    )
+    assert wrong_kind.status_code == 422
+
+    # Null keeps the pre-ledger behaviour and stays patchable.
+    bill = alice.post("/api/expenses", json={**payload, "account_id": None}, headers=ah)
+    assert bill.status_code == 201
+    bill_id = bill.json()["id"]
+    account = make_account(alice, ah)
+    assert (
+        alice.patch(
+            f"/api/expenses/{bill_id}", json={"account_id": foreign["id"]}, headers=ah
+        ).status_code
+        == 422
+    )
+    assert (
+        alice.patch(
+            f"/api/expenses/{bill_id}", json={"account_id": account["id"]}, headers=ah
+        ).status_code
+        == 200
+    )

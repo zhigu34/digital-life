@@ -6,7 +6,8 @@ from app.auth import Identity, authenticated, validated_patch
 from app.database import get_db
 from app.models import Show
 from app.shows.schemas import MAX_EPISODES, ResourceId, ShowPatch, ShowPayload, ShowView
-from app.shows.service import owned_show, set_completion_date, user_today
+from app.shows.service import owned_show, set_completion_date
+from app.timezones import user_today
 
 router = APIRouter(prefix="/api/shows", tags=["shows"])
 

@@ -1,7 +1,6 @@
 import re
 from datetime import date, datetime
 from typing import Annotated, Literal
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import Path
 from pydantic import (
@@ -13,6 +12,8 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+
+from app.timezones import validate_timezone
 
 
 def iso_date(value):
@@ -67,15 +68,7 @@ class Profile(Payload):
     @field_validator("timezone")
     @classmethod
     def valid_timezone(cls, value):
-        if value in {"Factory", "localtime", "posixrules"} or value.startswith(
-            ("posix/", "right/")
-        ):
-            raise ValueError("Timezone must be a portable IANA timezone")
-        try:
-            ZoneInfo(value)
-        except (ZoneInfoNotFoundError, ValueError):
-            raise ValueError("Timezone must be a valid IANA timezone") from None
-        return value
+        return validate_timezone(value)
 
 
 class UserView(Payload):
@@ -140,6 +133,11 @@ class ExpensePayload(Payload):
     anchor_day: Annotated[StrictInt, Field(ge=1, le=31)] | None = None
     active: StrictBool = True
     notes: Notes = ""
+    # Optional ledger defaults used only when confirming the bill as paid; older
+    # rows stay null and nothing is generated for them.
+    account_id: Annotated[StrictInt, Field(ge=1, le=2**63 - 1)] | None = None
+    category_id: Annotated[StrictInt, Field(ge=1, le=2**63 - 1)] | None = None
+    payee_id: Annotated[StrictInt, Field(ge=1, le=2**63 - 1)] | None = None
 
     @field_validator("anchor_day", mode="before")
     @classmethod
@@ -157,6 +155,12 @@ class ExpensePayload(Payload):
 
 class ExpenseView(ExpensePayload):
     id: int
+
+
+class ExpensePayView(ExpenseView):
+    """`/pay` answer: the bill plus the entry it generated, when it generated one."""
+
+    entry_id: int | None = None
 
 
 class MilestonePayload(Payload):

@@ -268,6 +268,7 @@ def test_future_date_validation_uses_user_timezone_and_legacy_utc(accounts, monk
     from sqlalchemy import select
 
     import app.maintenance as module
+    import app.timezones as timezone_module
     from app.models import User
 
     class FixedDateTime(datetime):
@@ -276,6 +277,8 @@ def test_future_date_validation_uses_user_timezone_and_legacy_utc(accounts, monk
             return datetime(2024, 5, 1, 0, 30, tzinfo=UTC).astimezone(tz)
 
     monkeypatch.setattr(module, "datetime", FixedDateTime)
+    # "Today" is derived by the shared timezone helper, so freeze its clock too.
+    monkeypatch.setattr(timezone_module, "datetime", FixedDateTime)
     app, admin, headers, alice, ah, bob, bh = accounts
     alice.patch("/api/auth/profile", headers=ah, json={"timezone": "America/Los_Angeles"})
     assert (

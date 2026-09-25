@@ -11,9 +11,9 @@ from sqlalchemy.orm import Session
 
 from app.auth import Identity, authenticated, validated_patch
 from app.database import get_db
-from app.maintenance import user_today
 from app.models import CheckIn, CheckInLog
 from app.schemas import ISODate, Notes, Payload, ResourceId, StrictBool
+from app.timezones import user_today
 
 router = APIRouter(prefix="/api/checkins", tags=["checkins"])
 DAYS_WINDOW = 400

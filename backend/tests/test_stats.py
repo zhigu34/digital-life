@@ -196,3 +196,106 @@ def test_stats_never_leaks_other_accounts(accounts):
         "/api/stats", params={"end_month": "2026-09"}, headers=alice_headers
     ).json()
     assert alice_stats["months"][-1]["expense_due"] == {"CNY": 4700}
+
+
+def ledger_account(client, headers, name="统计用卡", opening_balance_cents=0, currency="CNY"):
+    response = client.post(
+        "/api/ledger/accounts",
+        json={"name": name, "currency": currency, "opening_balance_cents": opening_balance_cents},
+        headers=headers,
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def ledger_category(client, headers, name, kind):
+    response = client.post(
+        "/api/ledger/categories", json={"name": name, "kind": kind}, headers=headers
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def ledger_payee(client, headers, name):
+    response = client.post("/api/ledger/payees", json={"name": name}, headers=headers)
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def ledger_entry(client, headers, **overrides):
+    payload = {
+        "occurred_on": "2026-09-05",
+        "kind": "expense",
+        "amount_cents": 100,
+        "currency": "CNY",
+    }
+    payload.update(overrides)
+    response = client.post("/api/ledger/entries", json=payload, headers=headers)
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def test_stats_reports_actual_ledger_money_beside_the_projected_dues(accounts):
+    _, _, _, alice, headers, bob, bob_headers = accounts
+    card = ledger_account(alice, headers)
+    wallet = ledger_account(alice, headers, name="统计现金")
+    living = ledger_category(alice, headers, "统计居住", "expense")
+    salary = ledger_category(alice, headers, "统计工资", "income")
+    isp = ledger_payee(alice, headers, "中国联通")
+
+    ledger_entry(
+        alice,
+        headers,
+        amount_cents=3000,
+        account_id=card["id"],
+        category_id=living["id"],
+        payee_id=isp["id"],
+    )
+    ledger_entry(
+        alice,
+        headers,
+        kind="income",
+        amount_cents=500000,
+        account_id=card["id"],
+        category_id=salary["id"],
+    )
+    # Uncategorised spending still counts as money out, just not per category.
+    ledger_entry(alice, headers, amount_cents=500, account_id=card["id"])
+    # Moving money between own accounts is neither income nor spending.
+    ledger_entry(
+        alice,
+        headers,
+        kind="transfer",
+        amount_cents=700,
+        from_account_id=card["id"],
+        to_account_id=wallet["id"],
+    )
+    # Inside the window but outside the end month: only its own month moves.
+    ledger_entry(alice, headers, occurred_on="2026-08-10", amount_cents=999, account_id=card["id"])
+
+    result = alice.get("/api/stats", params={"end_month": "2026-09"}, headers=headers)
+    assert result.status_code == 200, result.text
+    spent = read_month(result, "ledger_expense")
+    earned = read_month(result, "ledger_income")
+    assert spent["2026-09"] == 3000 + 500
+    assert earned["2026-09"] == 500000
+    assert spent["2026-08"] == 999
+    assert earned["2026-08"] == 0
+    assert spent["2025-10"] == 0
+
+    ledger = result.json()["ledger"]
+    by_name = {row["name"]: row for row in ledger["categories"]}
+    # Only the end month lands in the category breakdown, and no bill is invented.
+    assert set(by_name) == {"统计居住", "统计工资"}
+    assert by_name["统计居住"]["totals"] == {"CNY": 3000}
+    assert by_name["统计居住"]["kind"] == "expense"
+    assert by_name["统计工资"]["totals"] == {"CNY": 500000}
+
+    payees = ledger["payees"]
+    assert payees[0] == {"payee_id": isp["id"], "name": "中国联通", "totals": {"CNY": 3000}}
+    assert payees[1] == {"payee_id": None, "name": "未标注商户", "totals": {"CNY": 500}}
+
+    bob_ledger = bob.get("/api/stats", params={"end_month": "2026-09"}, headers=bob_headers).json()[
+        "ledger"
+    ]
+    assert bob_ledger == {"categories": [], "payees": []}

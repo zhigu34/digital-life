@@ -98,6 +98,18 @@ class PayeeMerge(Payload):
     into: EntryId
 
 
+class ExpensePayPayload(Payload):
+    """Optional body for confirming a recurring bill as paid.
+
+    An empty body keeps the pre-ledger behaviour: advance the due date only.
+    """
+
+    occurred_on: ISODate | None = None
+    account_id: EntryId | None = None
+    category_id: EntryId | None = None
+    payee_id: EntryId | None = None
+
+
 class EntryPayload(Payload):
     occurred_on: ISODate
     kind: EntryKind
@@ -152,6 +164,7 @@ __all__ = [
     "EntryPatch",
     "EntryPayload",
     "EntryView",
+    "ExpensePayPayload",
     "PayeeKind",
     "PayeeMerge",
     "PayeePatch",

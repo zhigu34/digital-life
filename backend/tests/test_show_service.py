@@ -1,6 +1,6 @@
 from datetime import UTC, date, datetime
 
-from app.shows.service import user_today
+from app.timezones import user_today
 
 
 def test_user_today_respects_profile_timezone():

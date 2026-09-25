@@ -44,9 +44,9 @@ from app.ledger.service import (
     payee_key,
     validate_entry_references,
 )
-from app.maintenance import user_today
 from app.models import LedgerAccount, LedgerCategory, LedgerEntry, LedgerPayee
 from app.schemas import ResourceId
+from app.timezones import user_today
 
 router = APIRouter(prefix="/api/ledger", tags=["ledger"])
 

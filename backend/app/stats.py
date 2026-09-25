@@ -7,10 +7,22 @@ from sqlalchemy.orm import Session
 
 from app.auth import Identity, authenticated
 from app.database import get_db
-from app.models import Expense, Maintenance, MaintenanceLog, Show
+from app.models import (
+    Expense,
+    LedgerCategory,
+    LedgerEntry,
+    LedgerPayee,
+    Maintenance,
+    MaintenanceLog,
+    Show,
+)
 
 router = APIRouter(prefix="/api", tags=["stats"])
 WINDOW_MONTHS = 12
+# Payee totals mix currencies, so the ranking uses the plain sum: exact for the
+# usual single-currency ledger and stable otherwise.
+UNLABELLED_PAYEE = "未标注商户"
+TOP_PAYEES = 8
 
 
 def parse_end_month(value: str) -> date:
@@ -40,6 +52,8 @@ def statistics(
                 "month": f"{year:04d}-{month + 1:02d}",
                 "expense_due": {},
                 "maintenance_cost": {},
+                "ledger_income": {},
+                "ledger_expense": {},
             }
         )
     by_month = {entry["month"]: entry for entry in months}
@@ -74,10 +88,80 @@ def statistics(
         totals = entry["maintenance_cost"]
         totals[log.currency] = totals.get(log.currency, 0) + log.cost_cents
 
+    # Actual money moved, as opposed to the projected expense_due above. Both are
+    # reported side by side; neither overwrites the other.
+    month_key = f"{end.year:04d}-{end.month:02d}"
+    category_totals: dict[int, dict[str, int]] = {}
+    payee_totals: dict[int | None, dict[str, int]] = {}
+    for record in db.scalars(
+        select(LedgerEntry).where(
+            LedgerEntry.user_id == identity.user.id,
+            LedgerEntry.occurred_on >= window_start,
+            LedgerEntry.occurred_on <= window_end,
+        )
+    ):
+        if record.kind == "transfer":
+            # Moving money between own accounts is neither income nor spending.
+            continue
+        key = f"{record.occurred_on.year:04d}-{record.occurred_on.month:02d}"
+        totals = by_month[key]["ledger_income" if record.kind == "income" else "ledger_expense"]
+        totals[record.currency] = totals.get(record.currency, 0) + record.amount_cents
+        if key != month_key:
+            continue
+        if record.category_id is not None:
+            bucket = category_totals.setdefault(record.category_id, {})
+            bucket[record.currency] = bucket.get(record.currency, 0) + record.amount_cents
+        if record.kind == "expense":
+            bucket = payee_totals.setdefault(record.payee_id, {})
+            bucket[record.currency] = bucket.get(record.currency, 0) + record.amount_cents
+
+    categories = []
+    if category_totals:
+        lookup = {
+            row.id: row
+            for row in db.scalars(
+                select(LedgerCategory).where(LedgerCategory.id.in_(category_totals))
+            )
+        }
+        for category_id, totals in category_totals.items():
+            category = lookup.get(category_id)
+            if category is None:
+                continue
+            categories.append(
+                {
+                    "category_id": category_id,
+                    "name": category.name,
+                    "kind": category.kind,
+                    "totals": totals,
+                }
+            )
+        categories.sort(key=lambda item: (item["kind"], item["name"]))
+
+    payees = []
+    if payee_totals:
+        named = {payee_id for payee_id in payee_totals if payee_id is not None}
+        names = (
+            {
+                row.id: row.name
+                for row in db.scalars(select(LedgerPayee).where(LedgerPayee.id.in_(named)))
+            }
+            if named
+            else {}
+        )
+        for payee_id, totals in payee_totals.items():
+            name = UNLABELLED_PAYEE if payee_id is None else names.get(payee_id, UNLABELLED_PAYEE)
+            payees.append({"payee_id": payee_id, "name": name, "totals": totals})
+        payees.sort(key=lambda item: -sum(item["totals"].values()))
+        del payees[TOP_PAYEES:]
+
     summary = {status: 0 for status in ("watching", "planned", "completed", "paused")}
     summary["episodes_watched"] = 0
     for show in db.scalars(select(Show).where(Show.user_id == identity.user.id)):
         if show.status in summary:
             summary[show.status] += 1
         summary["episodes_watched"] += show.progress
-    return {"months": months, "shows": summary}
+    return {
+        "months": months,
+        "shows": summary,
+        "ledger": {"categories": categories, "payees": payees},
+    }

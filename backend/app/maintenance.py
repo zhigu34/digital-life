@@ -2,7 +2,6 @@
 
 import calendar
 from datetime import UTC, date, datetime, timedelta
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
@@ -22,7 +21,8 @@ from app.maintenance_schemas import (
 )
 from app.models import Maintenance, MaintenanceLog
 from app.records import owned
-from app.schemas import Profile, ResourceId
+from app.schemas import ResourceId
+from app.timezones import user_today
 
 router = APIRouter(prefix="/api/maintenance", tags=["maintenance"])
 
@@ -38,14 +38,6 @@ def next_due_date(completed_on: date, value: int, unit: str) -> date:
         return date(year, month, min(completed_on.day, calendar.monthrange(year, month)[1]))
     except (ValueError, OverflowError):
         raise ValueError("Maintenance date is outside the supported calendar range") from None
-
-
-def user_today(timezone: str) -> date:
-    try:
-        zone = ZoneInfo(Profile.valid_timezone(timezone))
-    except (ValueError, ZoneInfoNotFoundError):
-        zone = UTC
-    return datetime.now(zone).date()
 
 
 def validate_actual_date(completed_on: date, identity: Identity):

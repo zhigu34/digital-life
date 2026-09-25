@@ -7,11 +7,22 @@ from sqlalchemy.orm import Session
 
 from app.auth import Identity, authenticated, validated_patch
 from app.database import get_db
+from app.ledger.schemas import ExpensePayPayload
+from app.ledger.service import (
+    check_entry_date,
+    now,
+    validate_entry_references,
+    validate_expense_links,
+)
 from app.maintenance_schemas import MaintenanceLogView, MaintenanceView
 from app.models import (
     CheckIn,
     CheckInLog,
     Expense,
+    LedgerAccount,
+    LedgerCategory,
+    LedgerEntry,
+    LedgerPayee,
     Maintenance,
     MaintenanceLog,
     Milestone,
@@ -23,6 +34,7 @@ from app.models import (
 from app.schemas import (
     ExpensePatch,
     ExpensePayload,
+    ExpensePayView,
     ExpenseView,
     MilestonePatch,
     MilestonePayload,
@@ -40,6 +52,7 @@ from app.schemas import (
     UserView,
 )
 from app.shows.schemas import ShowView
+from app.timezones import user_today
 
 router = APIRouter(prefix="/api", tags=["records"])
 COLLECTIONS = {
@@ -77,6 +90,8 @@ def register_collection(name, model, create_schema, patch_schema, view):
         db: Session = Depends(get_db),
     ):
         values = payload.model_dump()
+        if model is Expense:
+            validate_expense_links(db, identity.user.id, values)
         if model in (Task, Note, Project):
             values["created_at"] = datetime.now(UTC).replace(tzinfo=None)
         item = model(user_id=identity.user.id, **values)
@@ -92,6 +107,8 @@ def register_collection(name, model, create_schema, patch_schema, view):
     ):
         item = owned(db, model, item_id, identity.user.id)
         values = validated_patch(create_schema, item, payload).model_dump()
+        if model is Expense:
+            validate_expense_links(db, identity.user.id, values)
         for key, value in values.items():
             setattr(item, key, value)
         db.commit()
@@ -143,13 +160,38 @@ for name, definitions in COLLECTIONS.items():
     register_collection(name, *definitions)
 
 
-@router.post("/expenses/{item_id}/pay", response_model=ExpenseView)
+@router.post("/expenses/{item_id}/pay", response_model=ExpensePayView)
 def pay_expense(
-    item_id: ResourceId, identity: Identity = Depends(authenticated), db: Session = Depends(get_db)
+    item_id: ResourceId,
+    payload: ExpensePayPayload | None = None,
+    identity: Identity = Depends(authenticated),
+    db: Session = Depends(get_db),
 ):
     expense = owned(db, Expense, item_id, identity.user.id)
     if not expense.active:
         raise HTTPException(400, "已停用的花销不能确认付款")
+    options = payload or ExpensePayPayload()
+    # Request values win; otherwise fall back to the defaults bound to the bill.
+    account_id = options.account_id if options.account_id is not None else expense.account_id
+    category_id = options.category_id if options.category_id is not None else expense.category_id
+    payee_id = options.payee_id if options.payee_id is not None else expense.payee_id
+    occurred_on = options.occurred_on or user_today(identity.user.timezone)
+    check_entry_date(occurred_on, identity.user.timezone)
+
+    entry_values = None
+    if account_id is not None:
+        entry_values = {
+            "kind": "expense",
+            "amount_cents": expense.amount_cents,
+            "currency": expense.currency,
+            "account_id": account_id,
+            "category_id": category_id,
+            "payee_id": payee_id,
+        }
+        # Validate before advancing the due date: a rejected link must not leave
+        # a bill that moved on without recording the payment.
+        validate_entry_references(db, identity.user.id, entry_values)
+
     month_index = expense.next_due.year * 12 + expense.next_due.month - 1 + expense.period_months
     year, month = divmod(month_index, 12)
     if year > 9999:
@@ -157,8 +199,22 @@ def pay_expense(
     month += 1
     day = min(expense.anchor_day, calendar.monthrange(year, month)[1])
     expense.next_due = date(year, month, day)
+
+    entry_id = None
+    if entry_values is not None:
+        entry = LedgerEntry(
+            user_id=identity.user.id,
+            occurred_on=occurred_on,
+            note="",
+            expense_id=expense.id,
+            created_at=now(),
+            **entry_values,
+        )
+        db.add(entry)
+        db.flush()
+        entry_id = entry.id
     db.commit()
-    return expense
+    return ExpensePayView(**ExpenseView.model_validate(expense).model_dump(), entry_id=entry_id)
 
 
 @router.get("/export")
@@ -222,4 +278,42 @@ def export_data(identity: Identity = Depends(authenticated), db: Session = Depen
             .order_by(CheckInLog.id)
         )
     ]
+
+    def ledger_export(model, fields):
+        return [
+            {
+                "id": row.id,
+                "created_at": row.created_at,
+                **{name: getattr(row, name) for name in fields},
+            }
+            for row in db.scalars(
+                select(model).where(model.user_id == identity.user.id).order_by(model.id)
+            )
+        ]
+
+    # Balances are derived, so they are not exported; the importer recomputes them.
+    data["ledger_accounts"] = ledger_export(
+        LedgerAccount,
+        ("name", "kind", "currency", "opening_balance_cents", "archived", "sort_order"),
+    )
+    data["ledger_categories"] = ledger_export(
+        LedgerCategory, ("name", "kind", "archived", "sort_order")
+    )
+    data["ledger_payees"] = ledger_export(LedgerPayee, ("name", "kind", "archived", "sort_order"))
+    data["ledger_entries"] = ledger_export(
+        LedgerEntry,
+        (
+            "occurred_on",
+            "kind",
+            "amount_cents",
+            "currency",
+            "account_id",
+            "from_account_id",
+            "to_account_id",
+            "category_id",
+            "payee_id",
+            "note",
+            "expense_id",
+        ),
+    )
     return data

@@ -10,12 +10,18 @@ from sqlalchemy.orm import Session
 
 from app.auth import Identity, authenticated
 from app.database import get_db
+from app.ledger.schemas import AccountPayload, CategoryPayload, EntryPayload, PayeePayload
+from app.ledger.service import payee_key
 from app.maintenance import calculated_due
 from app.maintenance_schemas import MaintenanceCreate, MaintenanceLogView
 from app.models import (
     CheckIn,
     CheckInLog,
     Expense,
+    LedgerAccount,
+    LedgerCategory,
+    LedgerEntry,
+    LedgerPayee,
     Maintenance,
     MaintenanceLog,
     Milestone,
@@ -97,6 +103,28 @@ class CheckInLogRow(BaseModel):
     created_at: datetime | None = None
 
 
+class LedgerAccountRow(AccountPayload):
+    model_config = IGNORE_EXTRA
+    created_at: datetime | None = None
+
+
+class LedgerCategoryRow(CategoryPayload):
+    model_config = IGNORE_EXTRA
+    created_at: datetime | None = None
+
+
+class LedgerPayeeRow(PayeePayload):
+    model_config = IGNORE_EXTRA
+    created_at: datetime | None = None
+
+
+class LedgerEntryRow(EntryPayload):
+    model_config = IGNORE_EXTRA
+    # Carried in exports and re-pointed through the expense id mapping.
+    expense_id: int | None = None
+    created_at: datetime | None = None
+
+
 COLLECTION_ROWS = {
     "tasks": TaskRow,
     "expenses": ExpenseRow,
@@ -104,6 +132,10 @@ COLLECTION_ROWS = {
     "milestones": MilestoneRow,
     "notes": NoteRow,
     "projects": ProjectRow,
+    "ledger_accounts": LedgerAccountRow,
+    "ledger_categories": LedgerCategoryRow,
+    "ledger_payees": LedgerPayeeRow,
+    "ledger_entries": LedgerEntryRow,
 }
 MODELS = {
     "tasks": Task,
@@ -175,6 +207,15 @@ def import_data(
         raise HTTPException(422, "文件里没有任何生活记录")
     raw_ids = read_export_ids(payload, "maintenance")
     checkin_ids = read_export_ids(payload, "checkins")
+    # Ledger rows carry cross references, so every collection that can be pointed
+    # at needs its old ids kept for translation. A pre-ledger export lacks these
+    # keys: they parse as empty and the ledger is cleared, which is the expected
+    # outcome of the replace-everything import semantics.
+    account_ids = read_export_ids(payload, "ledger_accounts")
+    category_ids = read_export_ids(payload, "ledger_categories")
+    payee_ids = read_export_ids(payload, "ledger_payees")
+    expense_ids = read_export_ids(payload, "expenses")
+    entry_ids = read_export_ids(payload, "ledger_entries")
 
     logs_by_item = {}
     for index, log in enumerate(log_rows, 1):
@@ -222,12 +263,104 @@ def import_data(
             CheckInLog.checkin_id.in_(select(CheckIn.id).where(CheckIn.user_id == user_id))
         )
     )
-    for model in (Maintenance, CheckIn, Project, Task, Expense, Show, Milestone, Note):
+    for model in (
+        LedgerEntry,
+        LedgerAccount,
+        LedgerCategory,
+        LedgerPayee,
+        Maintenance,
+        CheckIn,
+        Project,
+        Task,
+        Expense,
+        Show,
+        Milestone,
+        Note,
+    ):
         db.execute(delete(model).where(model.user_id == user_id))
 
-    for key, rows in collections.items():
+    def remapped(mapping, value, key, old_id):
+        if value is None:
+            return None
+        if value not in mapping:
+            raise HTTPException(422, f"{key} 中 id={old_id} 引用了不存在的记录")
+        return mapping[value]
+
+    # Ledger first: bills and entries point at these rows, so each old id has to
+    # be translated to the one assigned here.
+    account_map = {}
+    for old_id, row in zip(account_ids, collections["ledger_accounts"], strict=True):
+        item = LedgerAccount(
+            user_id=user_id,
+            created_at=row.created_at or datetime.now(UTC).replace(tzinfo=None),
+            **row.model_dump(exclude={"created_at"}),
+        )
+        db.add(item)
+        db.flush()
+        account_map[old_id] = item.id
+
+    category_map = {}
+    for old_id, row in zip(category_ids, collections["ledger_categories"], strict=True):
+        item = LedgerCategory(
+            user_id=user_id,
+            created_at=row.created_at or datetime.now(UTC).replace(tzinfo=None),
+            **row.model_dump(exclude={"created_at"}),
+        )
+        db.add(item)
+        db.flush()
+        category_map[old_id] = item.id
+
+    # Payees fold on the normalised name, so an export holding near-duplicates
+    # collapses back into a single dictionary entry.
+    payee_map = {}
+    payee_index = {}
+    for old_id, row in zip(payee_ids, collections["ledger_payees"], strict=True):
+        key = payee_key(row.name)
+        existing = payee_index.get(key)
+        if existing is not None:
+            payee_map[old_id] = existing
+            continue
+        item = LedgerPayee(
+            user_id=user_id,
+            name_key=key,
+            created_at=row.created_at or datetime.now(UTC).replace(tzinfo=None),
+            **row.model_dump(exclude={"created_at"}),
+        )
+        db.add(item)
+        db.flush()
+        payee_index[key] = item.id
+        payee_map[old_id] = item.id
+
+    expense_map = {}
+    for old_id, row in zip(expense_ids, collections["expenses"], strict=True):
+        values = row.model_dump()
+        for field, mapping in (
+            ("account_id", account_map),
+            ("category_id", category_map),
+            ("payee_id", payee_map),
+        ):
+            values[field] = remapped(mapping, values.get(field), "expenses", old_id)
+        item = Expense(user_id=user_id, **values)
+        db.add(item)
+        db.flush()
+        expense_map[old_id] = item.id
+
+    for old_id, row in zip(entry_ids, collections["ledger_entries"], strict=True):
+        values = row.model_dump()
+        for field in ("account_id", "from_account_id", "to_account_id"):
+            values[field] = remapped(account_map, values.get(field), "ledger_entries", old_id)
+        for field, mapping in (
+            ("category_id", category_map),
+            ("payee_id", payee_map),
+            ("expense_id", expense_map),
+        ):
+            values[field] = remapped(mapping, values.get(field), "ledger_entries", old_id)
+        created_at = values.pop("created_at") or datetime.now(UTC).replace(tzinfo=None)
+        db.add(LedgerEntry(user_id=user_id, created_at=created_at, **values))
+
+    for key in ("tasks", "shows", "milestones", "notes", "projects"):
         model = MODELS[key]
-        for row in rows:
+        for row in collections[key]:
             values = row.model_dump()
             if model in (Task, Note, Project):
                 values["created_at"] = row.created_at or datetime.now(UTC).replace(tzinfo=None)
@@ -304,5 +437,9 @@ def import_data(
             "checkins": len(kept_checkins),
             "checkin_logs": imported_checkin_logs,
             "projects": len(collections["projects"]) + len(converted_projects),
+            "ledger_accounts": len(account_map),
+            "ledger_categories": len(category_map),
+            "ledger_payees": len(payee_index),
+            "ledger_entries": len(entry_ids),
         }
     }

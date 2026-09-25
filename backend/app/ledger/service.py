@@ -9,8 +9,8 @@ from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.maintenance import user_today
 from app.models import Expense, LedgerAccount, LedgerCategory, LedgerEntry, LedgerPayee
+from app.timezones import user_today
 
 # Seeded only while the user owns no category at all, so custom sets survive.
 DEFAULT_CATEGORIES = {
@@ -184,6 +184,23 @@ def merge_payees(db: Session, source: LedgerPayee, target: LedgerPayee) -> dict[
 def check_entry_date(occurred_on: date, timezone: str) -> None:
     if occurred_on > user_today(timezone):
         raise HTTPException(422, "日期不能晚于当前时区的今天")
+
+
+def validate_expense_links(db: Session, user_id: int, values: dict) -> None:
+    """A bill may carry default account/category/payee; each must belong to the caller."""
+    for field, model, message in (
+        ("account_id", LedgerAccount, "账户不存在"),
+        ("category_id", LedgerCategory, "分类不存在"),
+        ("payee_id", LedgerPayee, "商户不存在"),
+    ):
+        linked = values.get(field)
+        if linked is None:
+            continue
+        record = db.scalar(select(model).where(model.id == linked, model.user_id == user_id))
+        if record is None:
+            raise HTTPException(422, message)
+        if model is LedgerCategory and record.kind != "expense":
+            raise HTTPException(422, "账单的分类必须是支出类型")
 
 
 def validate_entry_references(db: Session, user_id: int, values: dict) -> None:
