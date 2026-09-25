@@ -5,6 +5,7 @@ data/
 backups/
 logs/
 .local/
+.workbuddy/
 .superpowers/
 .worktrees/
 node_modules/

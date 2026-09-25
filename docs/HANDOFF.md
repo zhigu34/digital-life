@@ -11,7 +11,7 @@
 - `frontend/src/App.vue` 的 `syncShows()` 不再本地重算 `stats.shows`（与后端 `app/stats.py` 重复实现，重构期间已因此出过 bug），改为变更后请求 `GET /api/stats` 刷新；`records.shows` 仍由 feature 回传的快照更新。
 - 文档同步：更新 `AGENTS.md` 代码结构章节（新增 `backend/app/shows/`、`frontend/src/features/shows/`，修正已删除的 `app/metadata.py` 引用）与模块边界约定；`docs/contracts/api.md` 补齐 Show 的 `release_year` / `completed_on` / `source_url` 字段与完成日期语义。
 
-验证：本地后端 `pytest` 149 项通过（基线 150，减少的 1 项即随兼容层删除的 legacy 导出断言）、`ruff check` 与 `ruff format --check` 通过；前端 Vitest 40 项、`vue-tsc` 类型检查与生产构建通过。容器 E2E 与 Docker 部署场景由分支 `codex/v2-debt-cleanup` 的 GitHub CI 验证：run `36039743973`（head `3dfb752`）的 backend、frontend、docker-e2e 三个 job 全部 success。未执行 NAS 部署，仍由用户在合入后运行 `git pull --ff-only && ./deploy`。
+验证：本地后端 `pytest` 149 项通过（基线 150，减少的 1 项即随兼容层删除的 legacy 导出断言）、`ruff check` 与 `ruff format --check` 通过；前端 Vitest 40 项、`vue-tsc` 类型检查与生产构建通过。容器 E2E 与 Docker 部署场景由分支 `codex/v2-debt-cleanup` 的 GitHub CI 验证：run `36039743973`（head `3dfb752`）的 backend、frontend、docker-e2e 三个 job 全部 success。随后以 `git merge --ff-only` 合入 `main` 并推送至 `c48673e`（本机 GitHub connector 无创建 PR 权限，403 `Resource not accessible by integration`，故按既有授权走快进合并）。main 上的 CI run `36084780341`（head `c48673e`）三个 job 同样全部 success。未执行 NAS 部署，仍由用户在合入后运行 `git pull --ff-only && ./deploy`；本轮无 API、数据库或迁移变更，部署只需重建镜像。
 
 ## 2026-09-16 追剧模块独立化
 
@@ -58,6 +58,8 @@
 1. NAS 首次部署已于 2026-09-16 由用户确认成功（用户反馈；本会话未远程连接 NAS 复核）。
 2. 用户在 NAS 执行 `git pull --ff-only && ./deploy`（迁移前 deploy 会自动备份旧库）。`c7439f8` 修复了 NAS 首次部署中「Web 入口到后端的健康检查」被 backend 容器出网代理拦截的问题，重新部署即可通过；基线此前未记录，本次会重新构建并落库。累计包含 Alembic `0003`–`0006` 与新增 `DIGITAL_LIFE_DISABLE_METADATA`、`DIGITAL_LIFE_TMDB_API_KEY` 配置项；追剧元数据搜索覆盖动漫、剧集、电影（双源可选，封面后端代理）；打卡回归纯每日必做，「在做」为独立功能；移动端底部导航为 5 主入口 + 更多抽屉。
 3. 如后续通过域名公网访问，按 README 配置 HTTPS、Secure Cookie 和可信 Origin；建议先补登录失败限速和 NAS 侧自动定期备份（2026-09-16 评审提出，尚未实施，仅内网使用时可放缓）。
+4. CI 的 backend job 只跑 `ruff check`，未跑 `ruff format --check`（`AGENTS.md` 要求本地两者都跑），导致 `main` 上 `app/shows/router.py`、`service.py` 长期格式漂移，已在本轮顺手归位。建议给 CI 补上 format check，避免再次漂移。
+5. `frontend/` 目前无 eslint/prettier 配置，前端写法无自动约束（`App.vue` 存在超长单行压缩写法）。若引入 lint 基线，建议单独一轮做，不要与重构改动混在同一 diff。
 4. 当前没有已知阻断功能使用的问题；后续功能继续从 `main` 创建新的 `codex/` 分支。用户已授权固定交付流程：分支 CI 全绿后直接合入 `main` 推送，NAS 部署由用户执行（见 AGENTS.md 协作与交付）。
 
 ## 本地与 Git 状态提示
