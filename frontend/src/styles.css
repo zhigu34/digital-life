@@ -7,8 +7,9 @@
     "PingFang SC",
     "Microsoft YaHei",
     sans-serif;
-  color: #2c3831;
-  background: #f8f9f5;
+  color: var(--ink);
+  background: var(--bg);
+  color-scheme: light;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -2333,6 +2334,55 @@ input:disabled {
 [data-theme="dark"] .tag.maintenance {
   background: #2f4130;
   color: #9dc3a0;
+}
+/* 登录页装饰与表单：这些元素用的是浅色字面值，不跟随变量。 */
+[data-theme="dark"] .orbit-ring {
+  border-color: #6d7f5c66;
+}
+[data-theme="dark"] .orbit-core {
+  background: #2f3d2e;
+  color: #a9c48f;
+}
+[data-theme="dark"] .orbit-chip {
+  background: #2a382bcc;
+  border-color: #3c4d39;
+  color: #b6c5a4;
+}
+[data-theme="dark"] .login-message > .eyebrow,
+[data-theme="dark"] .login-footer {
+  color: #93a184;
+}
+[data-theme="dark"] .login-message > p {
+  color: #a3b191;
+}
+/* 剧集封面占位与评分角标。 */
+[data-theme="dark"] .show-cover img,
+[data-theme="dark"] .poster-thumb {
+  background: #2a352d;
+}
+[data-theme="dark"] .show-score {
+  background: #18231ecc;
+}
+[data-theme="dark"] .avatar {
+  background: #2f4130;
+}
+/* 报错与危险操作：浅粉底在深色下最刺眼。 */
+[data-theme="dark"] .form-error,
+[data-theme="dark"] .global-error {
+  background: #3b2422;
+  border-color: #5a3a36;
+  color: #e8a08c;
+}
+[data-theme="dark"] .danger-hover:hover {
+  background: #3b2422;
+}
+[data-theme="dark"] .button.danger-ghost {
+  background: #3a2624;
+  border-color: #5a3a36;
+  color: #e08b70;
+}
+[data-theme="dark"] .button.danger-ghost:hover {
+  background: #452c29;
 }
 @media (min-width: 1550px) {
   .page {

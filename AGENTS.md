@@ -33,6 +33,7 @@
 - `frontend/src/views/MaintenanceView.vue`：周期维护配置、完成与历史修正；日期由后端派生。
 - `frontend/src/domain.ts`：时区、日期、周年与账单月均/应付计算；`api.ts`：Cookie/CSRF API 客户端。
 - `frontend/src/styles.css`：响应式与主题；`frontend/public/`：PWA 图标、清单、静态缓存。
+  主题由 `<html data-theme="light|dark">` 驱动，深色覆盖集中在 `styles.css` 末尾的 `[data-theme="dark"]` 块。`:root` 的 `color`/`background` 必须引用 `var(--ink)`/`var(--bg)`（写成字面值会让文档画布在深色下仍是浅色，卡片之间的留白全部发白）。`frontend/index.html` 的 `<head>` 内联脚本在样式生效前读 `localStorage` 里的偏好定下首帧主题，避免启动屏与登录页先闪浅色；服务端 `user.theme` 仍是权威值，登录后由 `App.vue` 的 `theme()` 覆盖缓存。组件新增浅色字面值（半透明浮层、危险色底、占位块）时，必须同步补深色覆盖。
 - `deploy`、`scripts/`、`docker-compose.yml`、Dockerfiles、`frontend/nginx.conf`：NAS 运行与维护。
 - `.github/workflows/ci.yml`：CI；`tests/deploy/`：部署脚本行为测试；`frontend/e2e/`：真实浏览器测试。
 
