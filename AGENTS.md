@@ -34,6 +34,9 @@
 - `frontend/src/domain.ts`：时区、日期、周年与账单月均/应付计算；`api.ts`：Cookie/CSRF API 客户端。
 - `frontend/src/styles.css`：响应式与主题；`frontend/public/`：PWA 图标、清单、静态缓存。
   主题由 `<html data-theme="light|dark">` 驱动，深色覆盖集中在 `styles.css` 末尾的 `[data-theme="dark"]` 块。`:root` 的 `color`/`background` 必须引用 `var(--ink)`/`var(--bg)`（写成字面值会让文档画布在深色下仍是浅色，卡片之间的留白全部发白）。`frontend/index.html` 的 `<head>` 内联脚本在样式生效前读 `localStorage` 里的偏好定下首帧主题，避免启动屏与登录页先闪浅色；服务端 `user.theme` 仍是权威值，登录后由 `App.vue` 的 `theme()` 覆盖缓存。组件新增浅色字面值（半透明浮层、危险色底、占位块）时，必须同步补深色覆盖。
+- 工具条里的表单控件不能直接吃全局表单样式：`styles.css` 的 `label { margin-bottom: 18px }` 与 `input, select, textarea { width: 100%; margin-top: 7px }` 是给弹窗表单写的，落到 `.collection-toolbar` 里会让下拉比搜索框低 7px（且被压缩后把「账户」「月份」这类两字标签挤成两行）。工具条内的 `label` 必须显式 `margin: 0`，`select` 用 `width: auto` 并去掉 `margin-top`（见 `features/ledger/ledger.css` 的 `.select-field` 与 `.merge-actions select`）。
+- 统计卡片放进 grid 容器时要去掉 `.summary-card` 的 `max-width: 400px`（网格轨道本身已经是上限）：否则宽屏下列宽超过 400px，卡片行右边缘会比页面右边界短约 20px，看起来没对齐。
+- 手写 `:value` + `@change` 的下拉（不是 `v-model`）不能用 `:value="null"` 当空选项：Vue 会移除该 option 的 value 属性、回退成选项文本，而 `select` 的 DOM `value` 是空串，两者不匹配 → `selectedIndex = -1`，下拉框整块显示空白（记账页「账户」筛选与「记一笔」的账户选择都曾如此）。空选项写 `value=""`，select 的 `:value` 写 `xxx ?? ''`；`v-model` 配 `:value="null"` 走的是 Vue 的 `_value` 比较，不受影响。
 - `deploy`、`scripts/`、`docker-compose.yml`、Dockerfiles、`frontend/nginx.conf`：NAS 运行与维护。
 - `.github/workflows/ci.yml`：CI；`tests/deploy/`：部署脚本行为测试；`frontend/e2e/`：真实浏览器测试。
 
