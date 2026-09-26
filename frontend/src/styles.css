@@ -1741,20 +1741,6 @@ input:disabled {
   font-size: 11px;
 }
 /* Check-ins */
-.checkin-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.checkin-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 17px 19px;
-  display: flex;
-  gap: 15px;
-  align-items: center;
-}
 .checkin-hit {
   width: 46px;
   height: 46px;
@@ -1790,54 +1776,6 @@ input:disabled {
 }
 .checkin-title-row h3 {
   font-size: 13px;
-}
-.checkin-stats {
-  font-size: 11px;
-  color: var(--muted);
-  margin-top: 4px;
-}
-.checkin-stats strong {
-  color: var(--green);
-  font-size: 13px;
-}
-.tag.daily {
-  background: #e7eefb;
-  color: #5b7ba8;
-}
-.tag.ongoing {
-  background: #faf0e5;
-  color: #b08548;
-}
-.checkin-week {
-  display: flex;
-  gap: 5px;
-  margin-top: 9px;
-}
-.checkin-week span {
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  background: var(--soft);
-  border: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.checkin-week span i {
-  font-style: normal;
-  font-size: 9px;
-  color: var(--muted);
-}
-.checkin-week span.hit {
-  background: var(--green-soft);
-  border-color: var(--green);
-}
-.checkin-week span.hit i {
-  color: var(--green);
-  font-weight: 600;
-}
-.checkin-week span.today {
-  box-shadow: 0 0 0 1.5px var(--green);
 }
 .checkin-log-list {
   margin-top: 18px;

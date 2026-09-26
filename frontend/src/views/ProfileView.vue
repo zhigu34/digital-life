@@ -36,6 +36,7 @@ const importSummary = computed(() => {
   if (!data) return "";
   const parts = [
     ["待办", "tasks"],
+    ["长期任务", "task_groups"],
     ["费用", "expenses"],
     ["追剧", "shows"],
     ["日子", "milestones"],
@@ -210,7 +211,7 @@ function confirmImport() {
     >
       <p class="muted">{{ importSummary }}</p>
       <p class="field-hint">
-        本账号当前的全部生活记录（待办、费用、追剧、重要日子、维护及其历史）将被替换；登录、密码和个人设置保持不变。
+        本账号当前的全部生活记录（待办、长期任务及其打卡、费用、追剧、重要日子、维护及其历史）将被替换；登录、密码和个人设置保持不变。
       </p>
       <div class="modal-actions">
         <button class="button secondary" @click="pendingImport = null">

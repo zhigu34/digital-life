@@ -30,12 +30,20 @@ const placeholders: Record<GenericCollection, string> = {
   tasks: "例如：读完书架上的那本书",
   milestones: "例如：第一次出发的日子",
 };
-const form = reactive<Record<string, any>>({ ...defaults[props.collection], ...props.item });
+// Only the editable fields travel back: the server forbids extra keys, and rows
+// carry server-only columns (`id`, `created_at`, a task's `completed_on`).
+const fields: Record<GenericCollection, string[]> = {
+  tasks: ["title", "notes", "status", "due_date", "priority"],
+  milestones: ["title", "notes", "date", "repeats_yearly"],
+};
+const form = reactive<Record<string, any>>({ ...defaults[props.collection] });
+for (const key of fields[props.collection]) {
+  if (props.item && key in props.item) form[key] = (props.item as Record<string, any>)[key];
+}
 
 function save() {
-  const data = { ...form };
-  delete data.id;
-  delete data.created_at;
+  const data: Record<string, unknown> = {};
+  for (const key of fields[props.collection]) data[key] = form[key];
   if (props.collection === "tasks") data.due_date = data.due_date || null;
   emit("save", data);
 }

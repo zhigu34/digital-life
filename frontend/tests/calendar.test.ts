@@ -14,7 +14,7 @@ const emptyRecords = (): Records => ({
   milestones: [],
   maintenance: [],
   notes: [],
-  checkins: [],
+  groups: [],
   projects: [],
 });
 
@@ -147,6 +147,7 @@ describe("calendar events", () => {
         status: "todo",
         due_date: "2026-09-10",
         priority: "high",
+        completed_on: null,
         created_at: "2026-09-01T00:00:00Z",
       },
       {
@@ -156,6 +157,7 @@ describe("calendar events", () => {
         status: "done",
         due_date: "2026-09-11",
         priority: "normal",
+        completed_on: "2026-09-11",
         created_at: "2026-09-01T00:00:00Z",
       },
     );

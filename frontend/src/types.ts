@@ -15,6 +15,45 @@ export interface Task {
   status: "todo" | "doing" | "waiting" | "done";
   due_date: string | null;
   priority: "low" | "normal" | "high";
+  /** Derived by the server: the day the task was closed, null while open. */
+  completed_on: string | null;
+  created_at: string;
+}
+
+/** How often a long-term check item is expected inside a period. */
+export type RepeatUnit = "day" | "week" | "month";
+
+/**
+ * One check item inside a long-term task. A week item is satisfied by any
+ * completion inside that week — there is no fixed weekday to hit.
+ */
+export interface GroupItem {
+  id: number;
+  group_id: number;
+  title: string;
+  repeat_unit: RepeatUnit;
+  start_date: string;
+  created_at: string;
+  /** Recent completion days, oldest first (bounded window). */
+  recent_days: string[];
+  total_count: number;
+}
+
+export interface TaskGroup {
+  id: number;
+  title: string;
+  notes: string;
+  archived: boolean;
+  archived_on: string | null;
+  created_at: string;
+  items: GroupItem[];
+}
+
+export interface TaskCompletion {
+  id: number;
+  item_id: number;
+  completed_on: string;
+  note: string;
   created_at: string;
 }
 export interface Expense {
@@ -76,28 +115,11 @@ export interface Note {
   entry_date: string;
   created_at: string;
 }
-export interface CheckInItem {
-  id: number;
-  title: string;
-  notes: string;
-  kind: "daily";
-  active: boolean;
-  created_at: string;
-  days: string[];
-  total_count: number;
-}
 export interface Project {
   id: number;
   title: string;
   notes: string;
   status: "active" | "paused" | "done";
-  created_at: string;
-}
-export interface CheckInLogEntry {
-  id: number;
-  checkin_id: number;
-  checked_on: string;
-  note: string;
   created_at: string;
 }
 export interface MaintenanceLog {
@@ -224,7 +246,8 @@ export interface Records {
   milestones: Milestone[];
   maintenance: Maintenance[];
   notes: Note[];
-  checkins: CheckInItem[];
+  /** Snapshot of long-term tasks, kept so the today overview can read them. */
+  groups: TaskGroup[];
   projects: Project[];
 }
 export type Page =
@@ -233,7 +256,6 @@ export type Page =
   | Collection
   | "maintenance"
   | "notes"
-  | "checkins"
   | "projects"
   | "bookmarks"
   | "profile"

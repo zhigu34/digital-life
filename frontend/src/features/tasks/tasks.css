@@ -1,0 +1,275 @@
+/* Long-term tasks: groups whose items are checked against day/week/month periods. */
+
+.heading-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.group-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px 20px 8px;
+  min-width: 0;
+}
+.group-card.archived {
+  background: var(--soft);
+}
+.group-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+.group-head-main {
+  min-width: 0;
+  flex: 1;
+}
+.group-head h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.group-sub {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 5px;
+}
+.group-head .record-actions {
+  margin-left: auto;
+}
+.progress-pill {
+  font-size: 11px;
+  background: var(--green-soft);
+  color: var(--green);
+  border-radius: 20px;
+  padding: 5px 12px;
+  white-space: nowrap;
+}
+.progress-pill.lagging {
+  background: #f7f0e6;
+  color: #a8834d;
+}
+.item-row {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 15px 0;
+  border-bottom: 1px solid var(--border);
+}
+.item-row:last-of-type {
+  border-bottom: 0;
+}
+.item-row .checkin-hit {
+  width: 42px;
+  height: 42px;
+}
+.stat-line {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 5px;
+  overflow-wrap: anywhere;
+}
+.stat-line strong {
+  color: var(--green);
+  font-size: 13px;
+}
+.period-note {
+  margin-top: 6px;
+}
+.item-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.tag.repeat-day {
+  background: #e7eefb;
+  color: #5b7ba8;
+}
+.tag.repeat-week {
+  background: #edf2e8;
+  color: #779565;
+}
+.tag.repeat-month {
+  background: #faf0e5;
+  color: #b08548;
+}
+
+/* A period is satisfied, missed, running, or outside the item's life. */
+.period-grid,
+.period-picker {
+  display: flex;
+  gap: 5px;
+  margin-top: 9px;
+  align-items: center;
+}
+.period-picker {
+  margin: 0 0 6px;
+  flex-wrap: wrap;
+}
+.period-cell {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  background: var(--soft);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  color: var(--muted);
+  padding: 0;
+}
+.period-cell:hover:not(:disabled) {
+  border-color: var(--green);
+}
+.period-cell.done {
+  background: var(--green);
+  border-color: var(--green);
+  color: #fff;
+  font-weight: 600;
+}
+.period-cell.missed {
+  background: #fdeceb;
+  border-color: #efc7c1;
+  color: #b4544a;
+  font-weight: 600;
+}
+.period-cell.pending {
+  border: 1.5px dashed var(--green);
+  color: var(--green);
+  background: transparent;
+}
+.period-cell.before {
+  border-style: dashed;
+  color: #b9c0b5;
+  background: transparent;
+}
+.period-cell.current {
+  box-shadow: 0 0 0 1.5px var(--green);
+}
+.period-cell.active {
+  border-width: 2px;
+  border-style: solid;
+}
+.period-cell .mult {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  background: var(--green);
+  color: #fff;
+  border-radius: 9px;
+  padding: 1px 3px;
+  font-size: 8px;
+  line-height: 1.3;
+}
+.period-picker-label {
+  margin-bottom: 16px;
+}
+.period-legend {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 10px;
+  color: var(--muted);
+  padding: 14px 0 6px;
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.period-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.period-legend i {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  background: var(--soft);
+  border: 1px solid var(--border);
+  display: inline-block;
+}
+.period-legend i.done {
+  background: var(--green);
+  border-color: var(--green);
+}
+.period-legend i.missed {
+  background: #fdeceb;
+  border-color: #efc7c1;
+}
+.period-legend i.pending {
+  border: 1.5px dashed var(--green);
+  background: transparent;
+}
+.period-legend i.before {
+  border-style: dashed;
+  background: transparent;
+}
+.item-draft {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+.item-draft > label:first-child {
+  flex: 1;
+}
+.item-draft .select-field select {
+  width: auto;
+}
+.item-draft .icon-button {
+  margin-bottom: 18px;
+}
+
+[data-theme="dark"] .progress-pill.lagging {
+  background: #3a2f22;
+  color: #d5ac72;
+}
+[data-theme="dark"] .period-cell.missed {
+  background: #3b2521;
+  border-color: #6d4038;
+  color: #e9a79a;
+}
+[data-theme="dark"] .period-cell.before {
+  color: #6f7d6b;
+}
+[data-theme="dark"] .period-legend i.missed {
+  background: #3b2521;
+  border-color: #6d4038;
+}
+[data-theme="dark"] .tag.repeat-day {
+  background: #262f3d;
+  color: #93aed3;
+}
+[data-theme="dark"] .tag.repeat-week {
+  background: #2c3a2c;
+  color: #a8c79b;
+}
+[data-theme="dark"] .tag.repeat-month {
+  background: #3a3024;
+  color: #d3ac77;
+}
+
+@media (max-width: 700px) {
+  .group-head {
+    flex-wrap: wrap;
+  }
+  .group-head .record-actions {
+    margin-left: 0;
+  }
+  .item-row {
+    flex-wrap: wrap;
+  }
+  .period-grid,
+  .period-picker {
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+  .item-draft {
+    flex-wrap: wrap;
+  }
+}

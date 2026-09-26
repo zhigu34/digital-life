@@ -10,6 +10,7 @@ import {
   labels,
 } from "../domain";
 import { maintenanceReminders, maintenanceTiming } from "../maintenance";
+import { needsAttention, repeatLabel } from "../features/tasks/periods";
 import AppIcon from "../components/AppIcon.vue";
 import EmptyState from "../components/EmptyState.vue";
 import type { LedgerTab } from "../features/ledger/ledger";
@@ -23,9 +24,9 @@ const emit = defineEmits<{
   navigate: [page: Page, ledgerTab?: LedgerTab];
   create: [collection: Collection];
   complete: [id: number];
-  checkin: [id: number];
+  checkin: [groupId: number, itemId: number];
 }>();
-const tasks = computed(() =>
+const dueTasks = computed(() =>
   props.records.tasks
     .filter((t) => t.status !== "done")
     .sort((a, b) => (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999"))
@@ -33,6 +34,21 @@ const tasks = computed(() =>
 );
 const completed = computed(
   () => props.records.tasks.filter((t) => t.status === "done").length,
+);
+/**
+ * Long-term items that still owe work in the period running now. A daily item
+ * shows up every day; a weekly one shows up until it is done once this week.
+ */
+const dueItems = computed(() =>
+  props.records.groups
+    .filter((group) => !group.archived)
+    .flatMap((group) => group.items.map((item) => ({ group, item })))
+    .filter(({ group, item }) => needsAttention(item, props.today, group.archived_on))
+    .sort(
+      (a, b) =>
+        ["day", "week", "month"].indexOf(a.item.repeat_unit) -
+        ["day", "week", "month"].indexOf(b.item.repeat_unit),
+    ),
 );
 const costs = computed(() =>
   expenseSummary(props.records.expenses, props.today),
@@ -70,11 +86,12 @@ const maintenanceDue = computed(() =>
 const alive = computed(() =>
   props.user.birthday ? daysBetween(props.user.birthday, props.today) : null,
 );
-const dueCheckins = computed(() =>
-  props.records.checkins
-    .filter((item) => item.active && item.kind === "daily" && !item.days.includes(props.today))
-    .slice(0, 3),
-);
+function dueTaskLabel(due: string | null): string {
+  if (!due) return "不设期限";
+  if (due < props.today) return "已逾期";
+  return due === props.today ? "今天到期" : due.replaceAll("-", ".");
+}
+const todayCount = computed(() => dueTasks.value.length + dueItems.value.length);
 </script>
 <template>
   <section class="page today-page">
@@ -205,85 +222,58 @@ const dueCheckins = computed(() =>
         ><AppIcon name="chevron" :size="14" />
       </button>
     </section>
-    <section v-if="dueCheckins.length" class="maintenance-reminder-panel" aria-label="今日打卡">
+    <section
+      v-if="todayCount"
+      class="maintenance-reminder-panel"
+      aria-label="今天的任务"
+    >
       <header>
         <div>
-          <span class="mini-symbol sky"><AppIcon name="checkins" :size="18" /></span>
+          <span class="mini-symbol sky"><AppIcon name="tasks" :size="18" /></span>
           <div>
-            <h2>今天还没打卡</h2>
-            <p>{{ dueCheckins.length }} 项每日必做在等你</p>
+            <h2>今天的任务</h2>
+            <p>
+              {{ dueTasks.length }} 件待办 · {{ dueItems.length }} 个长期任务还没完成
+            </p>
           </div>
         </div>
-        <button class="text-button" @click="emit('navigate', 'checkins')">
-          全部打卡<AppIcon name="chevron" :size="15" />
+        <button class="text-button" @click="emit('navigate', 'tasks')">
+          全部任务<AppIcon name="chevron" :size="15" />
         </button>
       </header>
       <button
-        v-for="item in dueCheckins"
-        :key="item.id"
+        v-for="task in dueTasks"
+        :key="`task-${task.id}`"
         class="maintenance-reminder-row"
-        :aria-label="`打卡 ${item.title}`"
+        :aria-label="`完成 ${task.title}`"
         :disabled="busy"
-        @click="emit('checkin', item.id)"
+        @click="emit('complete', task.id)"
       >
-        <span>{{ item.title }}</span
+        <span
+          >{{ task.title }} <span class="tag">待办 · {{ dueTaskLabel(task.due_date) }}</span></span
+        ><span>{{ labels[task.status] }}</span
+        ><AppIcon name="chevron" :size="14" />
+      </button>
+      <button
+        v-for="row in dueItems"
+        :key="`item-${row.item.id}`"
+        class="maintenance-reminder-row"
+        :aria-label="`打卡 ${row.item.title}`"
+        :disabled="busy"
+        @click="emit('checkin', row.group.id, row.item.id)"
+      >
+        <span
+          >{{ row.item.title }}
+          <span class="tag">{{ repeatLabel(row.item.repeat_unit) }}</span></span
         ><span>点我打卡</span
         ><AppIcon name="chevron" :size="14" />
       </button>
     </section>
     <div class="dashboard-grid">
-      <section class="panel focus-panel">
-        <header class="panel-heading">
-          <div>
-            <span class="section-index">01</span>
-            <h2>接下来，做这些</h2>
-          </div>
-          <button class="text-button" @click="emit('navigate', 'tasks')">
-            全部待办<AppIcon name="chevron" :size="15" />
-          </button>
-        </header>
-        <div v-if="tasks.length" class="dashboard-tasks">
-          <div v-for="task in tasks" :key="task.id" class="dashboard-task">
-            <button
-              class="task-check"
-              :aria-label="`完成 ${task.title}`"
-              :disabled="busy"
-              @click="emit('complete', task.id)"
-            ></button>
-            <div>
-              <h3>{{ task.title }}</h3>
-              <span class="small muted">{{
-                task.due_date
-                  ? (task.due_date < today
-                      ? "已逾期 · "
-                      : task.due_date === today
-                        ? "今天 · "
-                        : "") + task.due_date
-                  : "不设期限，按自己的节奏"
-              }}</span>
-            </div>
-            <span :class="['tag', task.status]">{{ labels[task.status] }}</span>
-          </div>
-        </div>
-        <EmptyState
-          v-else
-          icon="tasks"
-          title="今天，从容一点"
-          description="还没有待办。记下一件想做的小事，就很好。"
-          action="添加第一件事"
-          @action="emit('create', 'tasks')"
-        /><button
-          v-if="tasks.length"
-          class="panel-add"
-          @click="emit('create', 'tasks')"
-        >
-          <AppIcon name="plus" :size="17" />添加一件想做的事
-        </button>
-      </section>
       <section class="panel">
         <header class="panel-heading">
           <div>
-            <span class="section-index">02</span>
+            <span class="section-index">01</span>
             <h2>账单到期</h2>
           </div>
           <button
@@ -325,7 +315,7 @@ const dueCheckins = computed(() =>
       <section class="panel">
         <header class="panel-heading">
           <div>
-            <span class="section-index">03</span>
+            <span class="section-index">02</span>
             <h2>留一点时间给故事</h2>
           </div>
           <button class="text-button" @click="emit('navigate', 'shows')">
@@ -356,7 +346,7 @@ const dueCheckins = computed(() =>
       <section class="panel moments-panel">
         <header class="panel-heading">
           <div>
-            <span class="section-index">04</span>
+            <span class="section-index">03</span>
             <h2>生活里的小期待</h2>
           </div>
           <button
