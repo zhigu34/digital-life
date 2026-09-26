@@ -19,11 +19,12 @@
 - `backend/app/main.py`：应用生命周期、来源校验、缓存头与健康检查。
 - `backend/app/auth.py`、`security.py`：会话、CSRF、密码和个人设置。
 - `backend/app/admin.py`：管理员创建/停用账号、重置密码。
-- `backend/app/models.py`、`schemas.py`、`records.py`：数据模型、通用校验原语、通用集合（待办/账单/重要日子/随记/在做）和个人导出；账单的账户/分类/商户默认绑定与「确认已付时按需生成流水」也在 `records.py`。
+- `backend/app/models.py`、`schemas.py`、`records.py`：数据模型、通用校验原语、通用集合（一次性待办/账单/重要日子/随记/在做）和个人导出；账单的账户/分类/商户默认绑定与「确认已付时按需生成流水」也在 `records.py`，一次性待办 `completed_on` 的服务端派生（`sync_task_completion`）同样在这里。
 - `backend/app/ledger/`：记账域独立边界。`router.py` 拥有 `/api/ledger` 下账户/分类/商户/流水四组增删改查与 `/payees/{id}/merge`；`service.py` 拥有归属查找、派生余额、引用校验（409/422）与默认分类播种；`schemas.py` 拥有记账请求/响应模型与 kind 字段组合规则。余额是派生值，没有存储余额列。
 - `backend/app/timezones.py`：`user_today()` 与 `validate_timezone()` 的唯一归属地。跨域「今天」一律从这里取，避免 `records ↔ ledger ↔ maintenance` 形成导入环。
 - `backend/app/shows/`：追剧域独立边界。`router.py` 拥有 `/api/shows` 增删改查与 `/advance`；`service.py` 拥有归属查找与完成日期推进规则；`schemas.py` 拥有 Show 请求/响应模型（通用 `schemas.py` 不再转发 Shows 模型）；`metadata.py` 拥有 Bangumi/TMDB 抓取、封面代理与封面上传。
 - `backend/app/bookmarks/`：书签域独立边界。`router.py` 拥有 `/api/bookmarks` 增删改查、`/title` 标题获取与 `/{id}/visit` 访问计数；`service.py` 拥有归属查找、`<title>` 解析与 SSRF 防护（禁止内网/回环/保留地址，重定向逐跳重校验）；`schemas.py` 拥有 URL 校验（仅 http/https、≤2048、禁空格与 `javascript:`）。分组是可空字符串 `folder`，不建关联表。
+- `backend/app/groups/`：长期任务域独立边界。`router.py` 拥有 `/api/groups` 下分组/打卡项/完成记录三组读写与打卡撤销；`service.py` 拥有归属查找（项必须通过自己的分组解析）、完成窗口与全量计数的固定条数查询、导出用扁平三键；`schemas.py` 拥有分组与打卡项模型，`repeat_unit` 只有 `day`/`week`/`month`。**周期不是固定日期**：`week` 是"本周内完成即可"、`month` 是"本月内完成即可"，服务端只存完成日期，达标与否由前端 `features/tasks/periods.ts` 派生。
 - `backend/app/maintenance.py`、`maintenance_schemas.py`：周期维护、按实际日期计算的周期和带费用的完成历史。
 - `backend/app/database.py`、`backend/migrations/`：SQLite 与 Alembic 迁移。
 - `backend/app/cli.py`：管理员初始化、数据库迁移、一致性备份与离线恢复。
@@ -31,6 +32,7 @@
 - `frontend/src/features/shows/`：追剧域独立边界（`ShowsView`/`ShowCard`/`ShowForm`/`api.ts`/`domain.ts`/`useShows.ts`/`shows.css`），自行加载并在变更后只刷新自己，向 App 回传快照。
 - `frontend/src/features/bookmarks/`：书签域独立边界（`BookmarksView`/`BookmarkForm`/`api.ts`/`bookmarks.ts` 纯派生/`useBookmarks.ts`/`bookmarks.css`）。自行加载、自持状态，**不回传 App 快照**（页面键 `bookmarks` 带 `:key="user.id"`，切换账号自动重建），因此不在今日概览展示。
 - `frontend/src/features/ledger/`：记账域独立边界（`LedgerView` 四分区 + `EntryList`/`EntryForm`/`BillPanel`/`AccountPanel`/`CategoryPanel`/`PayeePanel`/`ReportPanel`/`api.ts`/`useLedger.ts`/`ledger.ts` 纯派生/`ledger.css`）。账单仍由 App 的 `records.expenses` 持有，记账域通过 `sync` 回传，不触发全局 `load()`。
+- `frontend/src/features/tasks/`：任务域独立边界（`TasksView`/`TaskCard`（一次性待办）/`GroupCard`（长期任务分组）/`GroupForm`/`ItemForm`/`HistoryDialog`/`api.ts`/`useGroups.ts`/`periods.ts` 纯派生/`tasks.css`）。一次性待办的增删改仍由 App 的 `records.tasks` 与 `RecordForm` 负责，长期任务自持数据并向 App 回传快照供今日概览使用；今日概览通过 `create-request`/`check-request` 两个请求属性驱动本页打开表单或直接打卡，不复制一份状态。
 - `frontend/src/views/`、`components/`：其余页面与共享交互组件。
 - `frontend/src/views/MaintenanceView.vue`：周期维护配置、完成与历史修正；日期由后端派生。
 - `frontend/src/domain.ts`：时区、日期、周年与账单月均/应付计算；`api.ts`：Cookie/CSRF API 客户端。
@@ -42,7 +44,7 @@
 - `deploy`、`scripts/`、`docker-compose.yml`、Dockerfiles、`frontend/nginx.conf`：NAS 运行与维护。
 - `.github/workflows/ci.yml`：CI；`tests/deploy/`：部署脚本行为测试；`frontend/e2e/`：真实浏览器测试。
 
-模块边界约定：追剧域与记账域的数据加载与变更只在各自的 `features/<域>/` 与 `app/<域>/` 内完成；App 只保留今日/日历所需的跨域快照，域内变更不再触发全局 `load()`。统计口径以服务端 `GET /api/stats` 为唯一真源，前端不得重算聚合；记账页选中单个账户时按已加载流水本地汇总属明确例外（服务端不提供按账户分组口径），该本地口径必须与全局口径可对齐。新增复杂集合时沿用同一模式（后端域包 + 前端 feature 自持数据 + 回传快照）。
+模块边界约定：追剧域、记账域与长期任务域的数据加载与变更只在各自的 `features/<域>/` 与 `app/<域>/` 内完成；App 只保留今日/日历所需的跨域快照，域内变更不再触发全局 `load()`。统计口径以服务端 `GET /api/stats` 为唯一真源，前端不得重算聚合；记账页选中单个账户时按已加载流水本地汇总属明确例外（服务端不提供按账户分组口径），该本地口径必须与全局口径可对齐。新增复杂集合时沿用同一模式（后端域包 + 前端 feature 自持数据 + 回传快照）。
 
 ## 开发环境和测试
 
@@ -106,6 +108,9 @@ E2E 会创建多个测试账号和生活记录；只对独立测试环境运行�
 - 周期扣费保留月末 anchor，例如 1/31 → 2/28 → 3/31。出生天数使用个人时区的日历日期；闰日周年在平年按 2/28 处理。
 - 时区输入须兼容浏览器 Intl，拒绝 Factory/localtime/posix/right 等系统专用名称；旧资料不能导致登录、导出或修复资料返回 500，日期显示应有 UTC 回退。
 - 周期维护与固定账单语义不同：维护按最新实际完成日顺延，补录不倒退，历史修正后重新取最大完成日期。同日重复须返回409；创建自动生成首条历史，删除事项级联删除历史。
+- 长期任务 / 周期维护 / 在做三者语义不同，不能互相替代：长期任务**不推进任何日期**，周期（每天 / 本周内完成 / 本月内完成）是固定格子，"这一周没做"永远留着；周期维护按实际完成日顺延；在做没有周期概念。一次性待办与长期任务是两种形态，**不可互相转换**（`tasks` 表没有 `kind` 与周期字段，混入即 422）。
+- 一次性的 `tasks.completed_on` 与长期任务的 `task_completions` 都由服务端派生/校验：前者只在 `status` 变成 `done` 的那一刻写入（编辑已完成的待办不会把完成日期改成今天），后者不接受晚于用户时区今天的日期（422）、同日重复 409。
+- 长期任务的达标口径（周期内至少一次完成）由前端 `features/tasks/periods.ts` 从完成日期派生，服务端只回原始事实。**记录过的完成日期是事实**：即使补记在 `start_date` 之前也要显示为已达标并计入连续；`start_date` 与 `archived_on` 只决定"空周期算不算漏做"。
 - 集数上限 1,000,000，资源 ID 限制在 SQLite 整数范围，避免通过输入校验后发生数据库溢出。
 
 ## 数据库、部署和恢复

@@ -1,5 +1,39 @@
 # Digital Life 接手状态
 
+## 2026-09-26 待办与打卡合并为「任务」，长期任务按周期打卡
+
+用户要求「把打卡功能和待办清单合并，支持一次性待办与可设重复周期的长期待办，长期待办自动进入打卡模式，能看清哪些日期完成、哪些没完成」。先出设计稿与可点效果图，用户确认 5 项决策后开工，分支 `codex/tasks-checkin-merge`：
+
+1. **每周/每月 = 本周/本月内完成即可**，不设固定日期。原设计里的"星期几/几号 + 月末锚定"整体删除，周期只由 `repeat_unit` + `start_date` 描述，服务端只存完成日期。
+2. **移除打卡页**，数据迁移进长期任务；合并时**不引入多余元素**（不新增页面/导航项/今日概览面板）。
+3. **移动端底部第 4 格换成「记账」**（`mobilePrimary`），打卡不再是主入口。
+4. **一次性待办是独立选项、不可互转**：所以长期任务没有塞进 `tasks` 表，而是三张新表；待办请求体混入周期字段直接 422。
+5. 另外 4 项细节（归档后历史保留到归档日、不做单项停用、达标率窗口 30/8/6、分组名必填）按建议执行。
+
+后端：
+
+- 迁移 `0011` 新建 `task_groups` / `task_group_items` / `task_completions`（`UNIQUE(item_id, completed_on)`），并给 `tasks` 加可空 `completed_on`；**同一迁移把 `checkins`/`checkin_logs` 的数据搬进新表后删掉旧表**：每个旧打卡项变成一个"单项目组 + `repeat_unit='day'` 的打卡项"，`start_date` 取**最早完成日**而不是创建时间 —— 否则历史会凭空长出"漏做"格子。`downgrade` 尽力回写（多分组的项会拆成多个 checkins），生产回退仍走预迁移备份。
+- 新域包 `app/groups/`：分组/打卡项 CRUD、`complete`/撤销、`completions?start=&end=`（跨度 ≤366 天）。归属由会话决定，**项只能通过自己的分组解析**（跨组配对 404）。列表接口用固定 4 条查询（分组 → 项 → 完成窗口 → 计数），有专门的查询计数回归用例。
+- `records.py` 新增 `sync_task_completion`：`completed_on` 只在 `status` 变成 `done` 的那一刻写入，改回其他状态清空；它不在 `TaskPayload` 里，客户端提交即 422。
+- 导出改成 `task_groups`/`task_group_items`/`task_completions` 三键；`imports.py` 仍接受旧导出的 `checkins` + `checkin_logs`（旧的 `kind='ongoing'` 继续转成在做项目），校验失败整体回滚。CLI `SCHEMA_REVISION` 升到 `0011`。
+- 顺手把 `uv.lock` 与 `pyproject.toml` 的 `requires-dist` 同步（此前 `python-multipart` 只进了包列表，没进 requires-dist；新版 uv 重跑锁文件带来的顺序漂移一并带入）。
+
+前端：
+
+- 新域包 `features/tasks/`：`TasksView`（一页两段：一次性待办 + 长期任务分组）、`TaskCard`、`GroupCard`、`GroupForm`、`ItemForm`、`HistoryDialog`、`periods.ts`（纯派生）、`useGroups.ts`（自持数据 + 回传快照）、`tasks.css`。`views/CollectionView.vue` 拆成 `views/MilestonesView.vue`（只留重要日子）。
+- 周期三态由 `periods.ts` 派生：`done` / `missed`（周期已结束且 0 次）/ `pending`（当前周期，**永远不算漏做**）/ `before`（早于 `start_date` 或晚于 `archived_on`）。周一为周起点、ISO 周号跨年（2027-01-01 属 2026-W53）。
+- 今日概览把原来的「接下来，做这些」与「今天还没打卡」两块面板**合并成一块「今天的任务」**：今天到期/逾期的一次性待办 + 当前周期未达标的打卡项（按 每天 → 本周 → 本月 排序）。点长期任务那一行会跳到任务页并直接打卡（`check-request` 请求属性），不复制一份状态。
+- 打卡页 `views/CheckInsView.vue`、`src/checkin.ts`、`Records.checkins`、导航项与 `styles.css` 里只服务于旧打卡页的样式（`.checkin-list/.checkin-card/.checkin-stats/.checkin-week/.tag.daily/.tag.ongoing`）一并删除；`.checkin-hit/.checkin-body/.checkin-title-row/.checkin-log-*` 保留，长期任务卡片继续用。
+
+本轮 E2E 抓到两个单测与类型检查都抓不到的**真 bug**：
+
+1. **`RecordForm` 把服务端字段回传导致编辑待办必然 422**：表单用 `{...props.item}` 初始化，`tasks` 新增 `completed_on` 后，编辑任何待办都会把它带回 PATCH，`extra="forbid"` 直接 422（表现是编辑弹窗点保存没反应）。改为只挑表单自己的字段回传。
+2. **补记到开始日期之前的完成记录被算成"不在计划内"**：`periodState` 先判 `start_date` 再判完成，导致"今天建的项补昨天的卡"既不高亮也不计入连续。改为**完成记录优先**：录过的日期就是事实，`start_date`/`archived_on` 只管空周期算不算漏做。
+
+验证：后端 `pytest` 205 项通过（新增分组 CRUD/二级归属 404/409/422、导出导入往返与旧 `checkins` 导出兼容、被拒导入不改动现有数据、`0005 → 0011` 数据保全与 `0011 → 0010` 回退、一次性待办 `completed_on`、查询计数不随分组数增长），`ruff check` 与 `ruff format --check` 通过。前端 Vitest 65 项（`periods.test.ts` 17 项覆盖 ISO 跨年周、闰月、三态、连续、达标率分母）、`vue-tsc`、生产构建通过；**本地 Playwright 50 项（桌面 + 手机）全绿**，其中把原打卡用例改写成长期任务用例（建分组 → 今日总览一键打卡 → 撤销/重打 → 周期明细补记昨天 → 每周项"本周已完成 1 次" → 刷新持久化 → 账号隔离）。
+
+**本机没有 Docker**：容器构建与 `docker-e2e` 只能在 GitHub Actions 验证，本地结论不含 Docker/NAS 已验证。本轮同样**未执行 NAS 部署**，仍由用户运行 `git pull --ff-only && ./deploy`。这次带 Alembic `0011`，`deploy` 会在迁移前自动备份旧库；迁移会**删除 `checkins`/`checkin_logs` 两张表**并把数据搬进新表，建议部署后在真实数据上确认三件事：原来的打卡项都变成"单项目组 + 每天"且连续天数与累计次数和升级前一致、历史格子没有凭空多出漏做、一次性待办的完成日期为空（升级前没有这个信息）。
+
 ## 2026-09-26 记账支持多账本（`fb4e3d2`）
 
 用户要求「记账添加多账本功能，这样可以为专项账目进行记录」。先用一张可点的界面样稿和一张 A/B 对比图把做法说清（题目是「账本该挂在哪里」），用户确认三个取舍后开工，分支 `codex/ledger-books`：
