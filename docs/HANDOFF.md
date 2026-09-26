@@ -22,6 +22,8 @@
 
 验证：后端 `pytest` 206 项（新增分组日志用例：跨项倒序、`item_title`、`limit` 边界 422、他人 404）、`ruff check` 与 `ruff format --check` 通过；前端 Vitest 76 项（新增 `collapse.test.ts` 4 项、`periods` 分组统计 5 项）、`vue-tsc`、生产构建通过；**本地 Playwright 52 项（桌面 + 手机）全绿**，其中新增折叠用例覆盖：默认展开刚建的分组 → 批量折叠 → 折叠态打卡后摘要与「刚刚更新」即时变化 → 展开一个（另一个保持折叠）→ 刷新后偏好保留 → 批量展开 → 账号隔离。
 
+分支 CI [Actions #36246366511](https://github.com/zhigu34/digital-life/actions/runs/36246366511)（head `545f1b1`）与 main CI [36246779623](https://github.com/zhigu34/digital-life/actions/runs/36246779623) 的 backend / frontend / docker-e2e 三个 job 全部 success，按既有授权走快进合并。
+
 **本机仍没有 Docker**，容器与 `docker-e2e` 只能在 GitHub Actions 验证；本轮同样**未执行 NAS 部署**。本次没有迁移，部署只需 `git pull --ff-only && ./deploy`（前端有改动，会重建前端镜像）。
 
 ## 2026-09-26 待办与打卡合并为「任务」，长期任务按周期打卡
