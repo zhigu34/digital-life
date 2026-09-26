@@ -14,6 +14,8 @@
 
 验证：`vue-tsc`、Vitest 76 项、生产构建通过；**本地 Playwright 52 项（桌面 + 手机）全绿**；逐屏截图核对 11 个页面 × 浅色/深色 + 登录页 + 手机端（放在 `.local/restyle/`）；深色亮度扫描（面积 ≥1500px²、亮度 ≥0.55 的元素）在 11 个页面均为 0。后端未改动（无迁移，仍是 `0011`）。
 
+分支 CI [Actions #36260713169](https://github.com/zhigu34/digital-life/actions/runs/36260713169)（head `df9e9fe`）与 main CI [36261166717](https://github.com/zhigu34/digital-life/actions/runs/36261166717) 的 backend / frontend / docker-e2e 三个 job 全部 success，按既有授权走快进合并。
+
 **本机没有 Docker**，容器与 `docker-e2e` 仍只在 GitHub Actions 验证；**NAS 部署由用户执行**，本次只有前端样式改动，`./deploy` 会重建前端镜像。
 
 ## 2026-09-26 长期任务卡片可折叠：默认摘要、按需详情、记住偏好
