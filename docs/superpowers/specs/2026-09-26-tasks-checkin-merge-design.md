@@ -1,6 +1,6 @@
 # 待办与打卡合并为「任务」设计（用户已确认范围，2026-09-26）
 
-状态：**范围与细节已确认（2026-09-26），正在实施**。第 0 节是用户确认的 5 项决策，第 12 节是另外 4 项细节（用户授权按默认建议执行）。实施分支 `codex/tasks-checkin-merge`。
+状态：**已实现并合入 `main`（2026-09-26，`bdf385a`）**。第 0 节是用户确认的 5 项决策，第 12 节是另外 4 项细节（用户授权按默认建议执行）。实施分支 `codex/tasks-checkin-merge`，前端目录落地为 `features/tasks/`（`app/groups/` 对应后端），验证结果见 `docs/HANDOFF.md`。
 
 目标：把现在的「待办清单」和「打卡」合并成一个「任务」页，只保留两种**互不相通**的任务形态：
 
@@ -145,7 +145,7 @@
 ### 5.4 服务端 / 前端分工
 
 - `GET /api/groups` 返回**原始事实**：分组与项字段 + 每项最近 400 天完成日期（`recent_days`，沿用 `DAYS_WINDOW`）+ `total_count`。
-- 周期归属、三态、连续达标、达标率由前端纯函数 `features/groups/periods.ts` 派生（沿用 `checkin.ts` 先例）：周/月格子需要渲染任意历史区间，做成服务端聚合就要为每个视图设计参数，且纯函数可单测、无网络往返。
+- 周期归属、三态、连续达标、达标率由前端纯函数 `features/tasks/periods.ts` 派生（沿用 `checkin.ts` 先例）：周/月格子需要渲染任意历史区间，做成服务端聚合就要为每个视图设计参数，且纯函数可单测、无网络往返。**完成记录优先于 `start_date`**：补记在开始日期之前的日期照旧算达标并计入连续，`start_date`/`archived_on` 只决定空周期算不算漏做。
 - **一旦引入跨任务的汇总**（如今日概览"共 5 项待做"、`/api/stats` 里的完成率）就由服务端算，前端不得自行加总 —— 遵守 AGENTS.md「统计口径以 `/api/stats` 为唯一真源」。
 
 ### 5.5 ISO 周边界（最容易写错的地方）
@@ -193,20 +193,18 @@
 ### 8.1 结构与归属
 
 ```
-frontend/src/features/groups/     # 长期任务域（自持数据 + 回传快照）
-  LongTasksView 部分 → 直接长在任务页里，不单独成页
+frontend/src/features/tasks/      # 长期任务域（自持数据 + 回传快照），与 app/groups/ 对应
+  TasksView.vue          # 任务页：一次性待办 + 长期任务分组同一列表
+  TaskCard.vue           # 一次性待办卡片（原 CollectionView 的 tasks 渲染）
   GroupCard.vue          # 分组卡片：标题 + 本期进度 + 组内打卡项行
-  CheckItemRow.vue       # 一行打卡项：打卡钮 + 周期文案 + 连续达标 + 周期格子
-  GroupForm.vue          # 新建/编辑分组与组内打卡项（可增删行）
-  HistoryDialog.vue      # 周期明细：某周期哪天打的卡 / 补卡 / 删记录
-  api.ts / useGroups.ts / periods.ts（纯派生）/ groups.css
+  ItemForm.vue           # 新增/编辑单个打卡项（标题、周期、开始日期）
+  GroupForm.vue          # 新建分组（含若干打卡项）/ 编辑分组
+  HistoryDialog.vue      # 周期明细：某周期哪天打的卡 / 补记 / 删记录
+  api.ts / useGroups.ts / periods.ts（纯派生）/ tasks.css
 ```
 
-- **复用**：卡片复用现有 `record-card` / `checkin-card` 的视觉与 `AppIcon`；弹窗复用 `ModalDialog`；筛选复用 `.tabs`；格子复用 `.checkin-week` 样式。**不新增图标、不新增页面、不新增导航项、不新增今日概览面板**。
-- **任务页 = 一页两段**（现有页面的自然延伸，不是新入口）：
-  - 上半段：一次性待办（现有 `CollectionView` 的 tasks 渲染与 tabs 原样保留，只多显示 `completed_on` 的"已于 X 完成"）。
-  - 下半段：长期任务分组卡片。
-  - 顶部"添加"按钮给两个选项：`添加待办`（现有表单）/ `添加长期任务`（分组表单）。就这两个，不做复合下拉或二级页。
+- **复用**：卡片复用 `record-card` 的视觉、`.checkin-hit` 大圆钮与 `.checkin-log-row` 明细行，弹窗复用 `ModalDialog`，筛选复用 `.tabs`。**不新增图标、不新增页面、不新增导航项、不新增今日概览面板**；只服务于旧打卡页的样式（`.checkin-list/.checkin-card/.checkin-stats/.checkin-week/.tag.daily/.tag.ongoing`）随页面一起删除。
+- **任务页 = 一个列表两种卡片**（现有页面的自然延伸，不是新入口）：tabs 为 `全部 / 待办 / 长期任务 / 已完成`，列表里一次性待办用 `TaskCard`、长期任务用 `GroupCard`；顶部只有 `添加长期任务` 与 `添加待办` 两个按钮，不做复合下拉或二级页。一次性待办的增删改仍走 App 的 `records.tasks` 与 `RecordForm`。
 - **打卡页删除**：`views/CheckInsView.vue`、`src/checkin.ts`、`Records.checkins`、`App.load()` 里的 `/checkins` 请求、导航与 `pageLabels` 中的 `checkins` 一并移除；`checkin.test.ts` 的用例改写成 `periods.test.ts`（周期口径），不保留旧断言。
 
 ### 8.2 卡片长什么样（文案是人话）
