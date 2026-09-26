@@ -63,7 +63,7 @@
   margin-top: 6px;
 }
 .group-live .lagging-text {
-  color: #a8834d;
+  color: #b47a11;
 }
 .pulse {
   display: inline-flex;
@@ -168,8 +168,8 @@
   white-space: nowrap;
 }
 .progress-pill.lagging {
-  background: #f7f0e6;
-  color: #a8834d;
+  background: #fef5e6;
+  color: #b47a11;
 }
 .item-row {
   display: flex;
@@ -204,16 +204,16 @@
   flex-shrink: 0;
 }
 .tag.repeat-day {
-  background: #e7eefb;
-  color: #5b7ba8;
+  background: #e8efff;
+  color: #3b6fdb;
 }
 .tag.repeat-week {
-  background: #edf2e8;
-  color: #779565;
+  background: #e0e9f5;
+  color: #516da9;
 }
 .tag.repeat-month {
-  background: #faf0e5;
-  color: #b08548;
+  background: #fef5e6;
+  color: #b47a11;
 }
 
 /* A period is satisfied, missed, running, or outside the item's life. */
@@ -253,9 +253,9 @@
   font-weight: 600;
 }
 .period-cell.missed {
-  background: #fdeceb;
-  border-color: #efc7c1;
-  color: #b4544a;
+  background: #fdecec;
+  border-color: #f6cdcd;
+  color: #d13b3b;
   font-weight: 600;
 }
 .period-cell.pending {
@@ -317,8 +317,8 @@
   border-color: var(--green);
 }
 .period-legend i.missed {
-  background: #fdeceb;
-  border-color: #efc7c1;
+  background: #fdecec;
+  border-color: #f6cdcd;
 }
 .period-legend i.pending {
   border: 1.5px dashed var(--green);
@@ -345,22 +345,22 @@
 
 [data-theme="dark"] .progress-pill.lagging {
   background: #3a2f22;
-  color: #d5ac72;
+  color: #fbbf24;
 }
 [data-theme="dark"] .group-live .lagging-text {
-  color: #d5ac72;
+  color: #fbbf24;
 }
 [data-theme="dark"] .period-cell.missed {
-  background: #3b2521;
-  border-color: #6d4038;
+  background: #2c1717;
+  border-color: #6d3b3b;
   color: #e9a79a;
 }
 [data-theme="dark"] .period-cell.before {
   color: #6f7d6b;
 }
 [data-theme="dark"] .period-legend i.missed {
-  background: #3b2521;
-  border-color: #6d4038;
+  background: #2c1717;
+  border-color: #6d3b3b;
 }
 [data-theme="dark"] .tag.repeat-day {
   background: #262f3d;
@@ -407,5 +407,98 @@
   }
   .collapse-actions {
     align-self: flex-end;
+  }
+}
+
+/* ═══ 2026-09 视觉改版：长期任务卡片（同 styles.css 的改版层） ═══ */
+.period-cell.done,
+.legend-cells i.done,
+.period-legend i.done {
+  background: var(--success);
+  border-color: var(--success);
+}
+.checkin-hit.done {
+  background: var(--success);
+  border-color: var(--success);
+}
+.period-cell.missed,
+.period-legend i.missed {
+  background: var(--danger-soft);
+  border-color: #f6cdcd;
+  color: var(--danger-strong);
+  font-weight: 600;
+}
+.period-cell.pending,
+.period-legend i.pending {
+  border-color: var(--green);
+  color: var(--green);
+}
+.period-cell.before,
+.period-legend i.before {
+  border-style: dashed;
+  background: transparent;
+  color: var(--muted-2);
+}
+.group-head .live .warn,
+.group-live .lagging-text {
+  color: var(--warn-ink);
+}
+.progress-pill {
+  background: var(--green-soft);
+  color: var(--green-strong);
+}
+.progress-pill.lagging {
+  background: var(--warn-soft);
+  color: var(--warn-ink);
+}
+.pulse {
+  background: var(--green-soft);
+  color: var(--green-strong);
+}
+.tag.repeat-day {
+  background: var(--green-soft);
+  color: var(--green-strong);
+}
+.tag.repeat-week {
+  background: var(--success-soft);
+  color: #0f9f74;
+}
+[data-theme="dark"] .tag.repeat-week {
+  color: var(--success);
+}
+.tag.repeat-month {
+  background: var(--warn-soft);
+  color: var(--warn-ink);
+}
+.stat-block strong {
+  color: var(--ink);
+}
+.group-card {
+  border-radius: var(--radius);
+  border-color: var(--border);
+  box-shadow: var(--shadow);
+}
+
+/* 窄屏：分组头部改成两列网格，标题独占一行 —— 否则 flex 换行会把标题挤成竖排 */
+@media (max-width: 700px) {
+  .group-head {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 10px 12px;
+  }
+  .group-head .collapse-toggle {
+    grid-area: 1 / 1 / 2 / 2;
+  }
+  .group-head .progress-pill {
+    grid-area: 1 / 2 / 2 / 3;
+    justify-self: end;
+  }
+  .group-head .group-head-main {
+    grid-area: 2 / 1 / 3 / 3;
+  }
+  .group-head .record-actions {
+    grid-area: 3 / 1 / 4 / 3;
+    margin-left: 0;
+    justify-content: flex-start;
   }
 }

@@ -1,8 +1,8 @@
 /* Ledger feature styles. Colours come from the shared tokens, with an explicit
    dark variant for the two semantic accents (spending orange / income green). */
 .ledger-page {
-  --ledger-expense: #b77c46;
-  --ledger-income: #3f7d5a;
+  --ledger-expense: #b47a11;
+  --ledger-income: #0f9f74;
 }
 [data-theme="dark"] .ledger-page {
   --ledger-expense: #d3a271;
@@ -10,17 +10,17 @@
 }
 .expense-text,
 .ledger-amount.expense {
-  color: var(--ledger-expense, #b77c46);
+  color: var(--ledger-expense, #b47a11);
 }
 .income-text,
 .ledger-amount.income {
-  color: var(--ledger-income, #3f7d5a);
+  color: var(--ledger-income, #0f9f74);
 }
 .ledger-amount.transfer {
   color: var(--muted);
 }
 .negative {
-  color: var(--ledger-expense, #b77c46);
+  color: var(--ledger-expense, #b47a11);
 }
 
 /* Book switcher. It scopes the cards, the list, the bills and the report at once,
