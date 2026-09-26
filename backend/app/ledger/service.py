@@ -9,7 +9,7 @@ from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import Expense, LedgerAccount, LedgerCategory, LedgerEntry, LedgerPayee
+from app.models import Expense, LedgerAccount, LedgerBook, LedgerCategory, LedgerEntry, LedgerPayee
 from app.timezones import user_today
 
 # Seeded only while the user owns no category at all, so custom sets survive.
@@ -17,6 +17,9 @@ DEFAULT_CATEGORIES = {
     "expense": ["餐饮", "交通", "居住", "购物", "医疗", "学习", "娱乐", "人情", "其他"],
     "income": ["工资", "奖金", "理财", "兼职", "报销", "其他"],
 }
+# A book is seeded under the same rule, so renaming or deleting the default
+# never makes it come back on top of the user's own naming.
+DEFAULT_BOOK_NAME = "日常"
 
 
 def now() -> datetime:
@@ -41,6 +44,10 @@ def _owned(db: Session, model, item_id: int, user_id: int, message: str):
     if record is None:
         raise HTTPException(404, message)
     return record
+
+
+def owned_book(db: Session, item_id: int, user_id: int) -> LedgerBook:
+    return _owned(db, LedgerBook, item_id, user_id, "账本不存在")
 
 
 def owned_account(db: Session, item_id: int, user_id: int) -> LedgerAccount:
@@ -125,8 +132,43 @@ def ensure_default_categories(db: Session, user_id: int) -> None:
         db.rollback()
 
 
+def ensure_default_book(db: Session, user_id: int) -> int:
+    """Return the book an unlabelled row belongs to, creating one when needed.
+
+    A user who owns no book at all — a fresh install, or an import of a
+    pre-books export — would otherwise have entries with nothing to show under.
+    """
+    existing = db.scalar(
+        select(LedgerBook.id)
+        .where(LedgerBook.user_id == user_id)
+        .order_by(LedgerBook.sort_order, LedgerBook.id)
+        .limit(1)
+    )
+    if existing is not None:
+        return existing
+    book = LedgerBook(user_id=user_id, name=DEFAULT_BOOK_NAME, created_at=now())
+    db.add(book)
+    try:
+        db.flush()
+        book_id = book.id
+        db.commit()
+    except IntegrityError:
+        # A concurrent import already seeded the same book.
+        db.rollback()
+        book_id = db.scalar(select(LedgerBook.id).where(LedgerBook.user_id == user_id).limit(1))
+        if book_id is None:
+            raise
+    return book_id
+
+
 def _in_use(db: Session, statement) -> bool:
     return bool(db.scalar(statement))
+
+
+def book_in_use(db: Session, book_id: int) -> bool:
+    return _in_use(
+        db, select(func.count()).select_from(LedgerEntry).where(LedgerEntry.book_id == book_id)
+    ) or _in_use(db, select(func.count()).select_from(Expense).where(Expense.book_id == book_id))
 
 
 def account_in_use(db: Session, account_id: int) -> bool:
@@ -187,11 +229,12 @@ def check_entry_date(occurred_on: date, timezone: str) -> None:
 
 
 def validate_expense_links(db: Session, user_id: int, values: dict) -> None:
-    """A bill may carry default account/category/payee; each must belong to the caller."""
+    """A bill may carry a default book/account/category/payee; each must be the caller's."""
     for field, model, message in (
         ("account_id", LedgerAccount, "账户不存在"),
         ("category_id", LedgerCategory, "分类不存在"),
         ("payee_id", LedgerPayee, "商户不存在"),
+        ("book_id", LedgerBook, "账本不存在"),
     ):
         linked = values.get(field)
         if linked is None:
@@ -247,3 +290,10 @@ def validate_entry_references(db: Session, user_id: int, values: dict) -> None:
         )
     ):
         raise HTTPException(422, "商户不存在")
+
+    if values.get("book_id") is not None and not db.scalar(
+        select(LedgerBook.id).where(
+            LedgerBook.id == values["book_id"], LedgerBook.user_id == user_id
+        )
+    ):
+        raise HTTPException(422, "账本不存在")

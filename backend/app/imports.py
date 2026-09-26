@@ -11,8 +11,14 @@ from sqlalchemy.orm import Session
 from app.auth import Identity, authenticated
 from app.bookmarks.schemas import BookmarkPayload
 from app.database import get_db
-from app.ledger.schemas import AccountPayload, CategoryPayload, EntryPayload, PayeePayload
-from app.ledger.service import payee_key
+from app.ledger.schemas import (
+    AccountPayload,
+    BookPayload,
+    CategoryPayload,
+    EntryPayload,
+    PayeePayload,
+)
+from app.ledger.service import DEFAULT_BOOK_NAME, now, payee_key
 from app.maintenance import calculated_due
 from app.maintenance_schemas import MaintenanceCreate, MaintenanceLogView
 from app.models import (
@@ -21,6 +27,7 @@ from app.models import (
     CheckInLog,
     Expense,
     LedgerAccount,
+    LedgerBook,
     LedgerCategory,
     LedgerEntry,
     LedgerPayee,
@@ -112,6 +119,11 @@ class CheckInLogRow(BaseModel):
     created_at: datetime | None = None
 
 
+class LedgerBookRow(BookPayload):
+    model_config = IGNORE_EXTRA
+    created_at: datetime | None = None
+
+
 class LedgerAccountRow(AccountPayload):
     model_config = IGNORE_EXTRA
     created_at: datetime | None = None
@@ -142,6 +154,7 @@ COLLECTION_ROWS = {
     "notes": NoteRow,
     "projects": ProjectRow,
     "bookmarks": BookmarkRow,
+    "ledger_books": LedgerBookRow,
     "ledger_accounts": LedgerAccountRow,
     "ledger_categories": LedgerCategoryRow,
     "ledger_payees": LedgerPayeeRow,
@@ -221,6 +234,7 @@ def import_data(
     # at needs its old ids kept for translation. A pre-ledger export lacks these
     # keys: they parse as empty and the ledger is cleared, which is the expected
     # outcome of the replace-everything import semantics.
+    book_ids = read_export_ids(payload, "ledger_books")
     account_ids = read_export_ids(payload, "ledger_accounts")
     category_ids = read_export_ids(payload, "ledger_categories")
     payee_ids = read_export_ids(payload, "ledger_payees")
@@ -278,6 +292,7 @@ def import_data(
         LedgerAccount,
         LedgerCategory,
         LedgerPayee,
+        LedgerBook,
         Maintenance,
         CheckIn,
         Project,
@@ -297,8 +312,31 @@ def import_data(
             raise HTTPException(422, f"{key} 中 id={old_id} 引用了不存在的记录")
         return mapping[value]
 
+    # A pre-books export carries no book at all, so its bills and entries would
+    # land unlabelled. Create one inside this transaction instead of seeding
+    # through a helper that commits: a rejected import has to leave the caller's
+    # ledger exactly as it was, and a commit here would already have dropped it.
+    seeded_book_id = None
+    if not book_ids and (expense_ids or entry_ids):
+        seeded = LedgerBook(user_id=user_id, name=DEFAULT_BOOK_NAME, created_at=now())
+        db.add(seeded)
+        db.flush()
+        seeded_book_id = seeded.id
+
     # Ledger first: bills and entries point at these rows, so each old id has to
     # be translated to the one assigned here.
+    book_map = {}
+    for old_id, row in zip(book_ids, collections["ledger_books"], strict=True):
+        item = LedgerBook(
+            user_id=user_id,
+            created_at=row.created_at or datetime.now(UTC).replace(tzinfo=None),
+            **row.model_dump(exclude={"created_at"}),
+        )
+        db.add(item)
+        db.flush()
+        book_map[old_id] = item.id
+    default_book_id = next(iter(book_map.values()), None) or seeded_book_id
+
     account_map = {}
     for old_id, row in zip(account_ids, collections["ledger_accounts"], strict=True):
         item = LedgerAccount(
@@ -349,8 +387,10 @@ def import_data(
             ("account_id", account_map),
             ("category_id", category_map),
             ("payee_id", payee_map),
+            ("book_id", book_map),
         ):
             values[field] = remapped(mapping, values.get(field), "expenses", old_id)
+        values["book_id"] = values["book_id"] or default_book_id
         item = Expense(user_id=user_id, **values)
         db.add(item)
         db.flush()
@@ -364,8 +404,10 @@ def import_data(
             ("category_id", category_map),
             ("payee_id", payee_map),
             ("expense_id", expense_map),
+            ("book_id", book_map),
         ):
             values[field] = remapped(mapping, values.get(field), "ledger_entries", old_id)
+        values["book_id"] = values["book_id"] or default_book_id
         created_at = values.pop("created_at") or datetime.now(UTC).replace(tzinfo=None)
         db.add(LedgerEntry(user_id=user_id, created_at=created_at, **values))
 
@@ -458,6 +500,7 @@ def import_data(
             "checkin_logs": imported_checkin_logs,
             "projects": len(collections["projects"]) + len(converted_projects),
             "bookmarks": len(collections["bookmarks"]),
+            "ledger_books": len(book_map),
             "ledger_accounts": len(account_map),
             "ledger_categories": len(category_map),
             "ledger_payees": len(payee_index),

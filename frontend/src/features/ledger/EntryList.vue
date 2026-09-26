@@ -1,8 +1,15 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import type { LedgerAccount, LedgerCategory, LedgerEntry, LedgerPayee } from "../../types";
+import type {
+  LedgerAccount,
+  LedgerBook,
+  LedgerCategory,
+  LedgerEntry,
+  LedgerPayee,
+} from "../../types";
 import { money } from "../../domain";
 import {
+  bookName,
   ENTRY_LIMIT,
   entryAccountLabel,
   entryKindLabels,
@@ -18,6 +25,9 @@ const props = defineProps<{
   accounts: LedgerAccount[];
   categories: LedgerCategory[];
   payees: LedgerPayee[];
+  books: LedgerBook[];
+  /** Only shown for "全部账本"; inside one book the tag would just repeat itself. */
+  showBook: boolean;
   accountFilter: number | null;
   busy: boolean;
 }>();
@@ -47,6 +57,7 @@ const visible = computed(() => {
       categoryName(entry.category_id),
       payeeName(entry.payee_id),
       entryAccountLabel(entry, props.accounts),
+      bookName(props.books, entry.book_id),
       money(entry.amount_cents, entry.currency),
     ]
       .join(" ")
@@ -130,7 +141,7 @@ function totalsText(totals: Record<string, number>) {
           <li v-for="entry in group.entries" :key="entry.id" class="ledger-row">
             <span class="ledger-symbol" :class="entry.kind"><AppIcon :name="entry.kind === 'transfer' ? 'arrow' : 'expenses'" :size="17" /></span>
             <div class="ledger-main">
-              <h4>{{ title(entry) }}<span v-if="entry.expense_id" class="tag bill-tag">账单</span></h4>
+              <h4>{{ title(entry) }}<span v-if="showBook" class="tag book-tag">{{ bookName(books, entry.book_id) }}</span><span v-if="entry.expense_id" class="tag bill-tag">账单</span></h4>
               <p class="ledger-meta">
                 <span v-if="payeeName(entry.payee_id)" class="payee">{{ payeeName(entry.payee_id) }}</span>
                 <span v-if="entry.note" class="ledger-note">{{ entry.note }}</span>

@@ -2,13 +2,18 @@ import type {
   AccountKind,
   CategoryKind,
   EntryKind,
+  Expense,
   LedgerAccount,
+  LedgerBook,
   LedgerEntry,
   StatsLedgerCategory,
 } from "../../types";
 
 /** The ledger page keeps four sections behind an inner tab bar. */
 export type LedgerTab = "entries" | "bills" | "manage" | "report";
+
+/** Shown only for rows recorded before books existed and never re-filed. */
+export const UNFILED_BOOK = "未归类";
 
 export const accountKindLabels: Record<AccountKind, string> = {
   cash: "现金",
@@ -57,6 +62,27 @@ export function filterByAccount(
       entry.from_account_id === accountId ||
       entry.to_account_id === accountId,
   );
+}
+
+/**
+ * Entries filed under one book; `null` means every book. A book is a label, so
+ * this never changes an account balance — only what the page lists.
+ */
+export function filterByBook(entries: LedgerEntry[], bookId: number | null): LedgerEntry[] {
+  if (bookId === null) return entries;
+  return entries.filter((entry) => entry.book_id === bookId);
+}
+
+/** Bills filed under one book; `null` means every book. */
+export function filterBillsByBook(bills: Expense[], bookId: number | null): Expense[] {
+  if (bookId === null) return bills;
+  return bills.filter((bill) => bill.book_id === bookId);
+}
+
+/** Name of a book, falling back for rows that carry no book at all. */
+export function bookName(books: LedgerBook[], id: number | null): string {
+  if (id === null) return UNFILED_BOOK;
+  return books.find((book) => book.id === id)?.name ?? UNFILED_BOOK;
 }
 
 export interface MonthSummary {

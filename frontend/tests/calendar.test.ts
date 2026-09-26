@@ -172,6 +172,7 @@ describe("calendar events", () => {
       account_id: null,
       category_id: null,
       payee_id: null,
+      book_id: null,
     });
     records.maintenance.push(
       {

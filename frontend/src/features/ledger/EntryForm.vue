@@ -3,6 +3,7 @@ import { computed, reactive, ref } from "vue";
 import type {
   EntryKind,
   LedgerAccount,
+  LedgerBook,
   LedgerCategory,
   LedgerEntry,
   LedgerPayee,
@@ -14,9 +15,12 @@ import ModalDialog from "../../components/ModalDialog.vue";
 
 const props = defineProps<{
   item?: LedgerEntry;
+  books: LedgerBook[];
   accounts: LedgerAccount[];
   categories: LedgerCategory[];
   payees: LedgerPayee[];
+  /** Whichever book the page is filtered by; a new entry lands in it by default. */
+  defaultBookId: number | null;
   today: string;
   busy: boolean;
   error: string;
@@ -29,6 +33,12 @@ const emit = defineEmits<{
 }>();
 
 const kinds: EntryKind[] = ["expense", "income", "transfer"];
+/**
+ * An entry always gets filed somewhere: the book currently in view wins, then the
+ * first one. Leaving it unset would also render the <select> blank.
+ */
+const startBookId: number | null =
+  props.item?.book_id ?? props.defaultBookId ?? props.books[0]?.id ?? null;
 const form = reactive({
   kind: (props.item?.kind ?? "expense") as EntryKind,
   occurred_on: props.item?.occurred_on ?? props.today,
@@ -37,6 +47,7 @@ const form = reactive({
   from_account_id: (props.item?.from_account_id ?? null) as number | null,
   to_account_id: (props.item?.to_account_id ?? null) as number | null,
   category_id: (props.item?.category_id ?? null) as number | null,
+  book_id: startBookId,
   note: props.item?.note ?? "",
 });
 const payeeName = ref(props.item?.payee_id ? (props.payees.find((p) => p.id === props.item!.payee_id)?.name ?? "") : "");
@@ -122,6 +133,7 @@ async function save() {
     to_account_id: isTransfer.value ? form.to_account_id : null,
     category_id: isTransfer.value ? null : form.category_id,
     payee_id: payeeId,
+    book_id: form.book_id,
   });
 }
 </script>
@@ -155,6 +167,7 @@ async function save() {
         <label>转入账户<select v-model="form.to_account_id" required><option :value="null" disabled>请选择</option><option v-for="row in accounts" :key="row.id" :value="row.id">{{ row.name }}（{{ row.currency }}）</option></select></label>
       </div>
       <label v-else>账户<select :value="form.account_id ?? ''" required @change="pickAccount(Number(($event.target as HTMLSelectElement).value))"><option value="" disabled>请选择</option><option v-for="row in accounts" :key="row.id" :value="row.id">{{ row.name }}（{{ row.currency }}）</option></select></label>
+      <label v-if="books.length">账本 <span class="optional">专项开销归到这里</span><select v-model="form.book_id"><option v-for="row in books" :key="row.id" :value="row.id">{{ row.name }}{{ row.archived ? "（已归档）" : "" }}</option></select></label>
 
       <template v-if="!isTransfer">
         <div class="form-grid">

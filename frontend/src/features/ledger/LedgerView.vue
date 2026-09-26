@@ -1,14 +1,22 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import type { Expense, LedgerEntry, Stats } from "../../types";
+import { api } from "../../api";
 import { money } from "../../domain";
 import { metricCurrencies } from "../../stats";
-import { filterByAccount, monthlySummary, type LedgerTab } from "./ledger";
+import {
+  filterBillsByBook,
+  filterByAccount,
+  filterByBook,
+  monthlySummary,
+  type LedgerTab,
+} from "./ledger";
 import { useLedger } from "./useLedger";
 import AppIcon from "../../components/AppIcon.vue";
 import EntryList from "./EntryList.vue";
 import EntryForm from "./EntryForm.vue";
 import BillPanel from "./BillPanel.vue";
+import BookPanel from "./BookPanel.vue";
 import AccountPanel from "./AccountPanel.vue";
 import CategoryPanel from "./CategoryPanel.vue";
 import PayeePanel from "./PayeePanel.vue";
@@ -29,7 +37,7 @@ const emit = defineEmits<{
 }>();
 
 const ledger = useLedger();
-const { accounts, categories, payees, entries, loading, busy, error } = ledger;
+const { books, accounts, categories, payees, entries, loading, busy, error } = ledger;
 const tabs: [LedgerTab, string][] = [
   ["entries", "流水"],
   ["bills", "账单"],
@@ -37,6 +45,7 @@ const tabs: [LedgerTab, string][] = [
   ["report", "报表"],
 ];
 const tab = ref<LedgerTab>(props.startTab ?? "entries");
+const bookFilter = ref<number | null>(null);
 const accountFilter = ref<number | null>(null);
 const editing = ref<LedgerEntry | null | undefined>(undefined);
 const formError = ref("");
@@ -48,21 +57,71 @@ const currency = computed(
 const filteredAccount = computed(
   () => accounts.value.find((row) => row.id === accountFilter.value) ?? null,
 );
+const selectedBook = computed(() => books.value.find((row) => row.id === bookFilter.value) ?? null);
+/** Every book's rows are already loaded, so switching the filter stays instant. */
+const bookEntries = computed(() => filterByBook(entries.value, bookFilter.value));
+const bookBills = computed(() => filterBillsByBook(props.bills, bookFilter.value));
+
+/**
+ * Book-scoped numbers come from the server, so the cards, the bill projection and
+ * the report always agree with each other. "全部账本" reuses the snapshot the app
+ * already loaded instead of asking for the same window twice.
+ */
+const scopedStats = ref<Stats | null>(props.stats);
+async function loadScopedStats() {
+  if (bookFilter.value === null) {
+    scopedStats.value = props.stats;
+    return;
+  }
+  scopedStats.value = await api<Stats>(
+    `/stats?end_month=${month.value}&book_id=${bookFilter.value}`,
+  );
+}
+watch(
+  () => props.stats,
+  (next) => {
+    if (bookFilter.value === null) scopedStats.value = next;
+  },
+);
+watch(bookFilter, () => {
+  // Both filters at once reads as "no data"; picking a book starts a fresh view.
+  accountFilter.value = null;
+  loadScopedStats().catch((e) => emit("error", e));
+});
+watch(books, (rows) => {
+  // A book can be deleted from the manage tab; never keep filtering by a ghost.
+  if (bookFilter.value !== null && !rows.some((row) => row.id === bookFilter.value))
+    bookFilter.value = null;
+});
+
 /** Account-scoped numbers come from the loaded entries, so list and cards agree. */
 const local = computed(() =>
-  monthlySummary(filterByAccount(entries.value, accountFilter.value), month.value, currency.value),
+  monthlySummary(
+    filterByAccount(bookEntries.value, accountFilter.value),
+    month.value,
+    currency.value,
+  ),
 );
 const summary = computed(() => {
   if (accountFilter.value !== null) return local.value;
-  const row = props.stats?.months.find((item) => item.month === month.value);
+  const row = scopedStats.value?.months.find((item) => item.month === month.value);
   const income = row?.ledger_income[currency.value] ?? 0;
   const expense = row?.ledger_expense[currency.value] ?? 0;
   return { income, expense, net: income - expense };
 });
+const summaryPrefix = computed(() => {
+  if (filteredAccount.value) return `${filteredAccount.value.name} · `;
+  if (selectedBook.value) return `${selectedBook.value.name} · `;
+  return "";
+});
+const summaryNote = computed(() =>
+  accountFilter.value !== null ? "按已加载流水统计" : "来自服务端统计",
+);
 
 async function reload(notice?: string) {
   try {
     await ledger.load();
+    if (bookFilter.value !== null) await loadScopedStats();
     if (notice) emit("notice", notice);
   } catch (e) {
     emit("error", e);
@@ -99,6 +158,10 @@ async function removeEntry(item: LedgerEntry) {
 }
 function viewAccountEntries(accountId: number) {
   accountFilter.value = accountId;
+  tab.value = "entries";
+}
+function viewBookEntries(bookId: number) {
+  bookFilter.value = bookId;
   tab.value = "entries";
 }
 async function refreshPayees() {
@@ -140,10 +203,16 @@ onMounted(() => {
       <button class="button primary" @click="openEntry()"><AppIcon name="plus" :size="18" />记一笔</button>
     </header>
 
+    <div class="ledger-book-bar">
+      <label class="select-field"><span>账本</span><select :value="bookFilter ?? ''" @change="bookFilter = Number(($event.target as HTMLSelectElement).value) || null"><option value="">全部账本</option><option v-for="row in books" :key="row.id" :value="row.id">{{ row.name }}{{ row.archived ? "（已归档）" : "" }}</option></select></label>
+      <p class="summary-note">{{ selectedBook ? `只看「${selectedBook.name}」的流水、账单与报表；账户余额仍是所有账本的合计。` : "账本是流水上的标签，用来归集专项开销；账户与余额所有账本共用。" }}</p>
+      <button v-if="selectedBook" class="text-button" @click="bookFilter = null"><AppIcon name="close" :size="14" />清除</button>
+    </div>
+
     <section class="ledger-summary" aria-label="本月收支">
-      <div class="summary-card"><span>{{ filteredAccount ? filteredAccount.name + " · " : "" }}本月支出</span><strong class="expense-text">{{ money(summary.expense, currency) }}</strong><small>{{ filteredAccount ? "按已加载流水统计" : "来自服务端统计" }}</small></div>
-      <div class="summary-card"><span>{{ filteredAccount ? filteredAccount.name + " · " : "" }}本月收入</span><strong class="income-text">{{ money(summary.income, currency) }}</strong><small>{{ filteredAccount ? "按已加载流水统计" : "来自服务端统计" }}</small></div>
-      <div class="summary-card"><span>{{ filteredAccount ? filteredAccount.name + " · 本月净流量" : "本月结余" }}</span><strong :class="{ negative: summary.net < 0 }">{{ money(summary.net, currency) }}</strong><small>{{ filteredAccount ? "结余是当月流量，余额见「管理」" : "收入 − 支出，转账不计入" }}</small></div>
+      <div class="summary-card"><span>{{ summaryPrefix }}本月支出</span><strong class="expense-text">{{ money(summary.expense, currency) }}</strong><small>{{ summaryNote }}</small></div>
+      <div class="summary-card"><span>{{ summaryPrefix }}本月收入</span><strong class="income-text">{{ money(summary.income, currency) }}</strong><small>{{ summaryNote }}</small></div>
+      <div class="summary-card"><span>{{ summaryPrefix }}本月{{ summaryPrefix ? "净流量" : "结余" }}</span><strong :class="{ negative: summary.net < 0 }">{{ money(summary.net, currency) }}</strong><small>{{ summaryPrefix ? "结余是当月流量，余额见「管理」" : "收入 − 支出，转账不计入" }}</small></div>
     </section>
 
     <div class="tabs ledger-tabs" aria-label="记账分区">
@@ -152,10 +221,12 @@ onMounted(() => {
 
     <EntryList
       v-if="tab === 'entries'"
-      :entries="filterByAccount(entries, accountFilter)"
+      :entries="filterByAccount(bookEntries, accountFilter)"
       :accounts="accounts"
       :categories="categories"
       :payees="payees"
+      :books="books"
+      :show-book="bookFilter === null"
       :busy="busy"
       :account-filter="accountFilter"
       @edit="openEntry"
@@ -164,28 +235,33 @@ onMounted(() => {
     />
     <BillPanel
       v-else-if="tab === 'bills'"
-      :bills="bills"
+      :bills="bookBills"
+      :books="books"
       :accounts="accounts"
       :categories="categories"
       :payees="payees"
-      :stats="stats"
+      :stats="scopedStats"
       :today="today"
       :busy="busy"
+      :default-book-id="bookFilter"
       @sync="syncBills"
       @error="emit('error', $event)"
       @notice="emit('notice', $event)"
     />
     <div v-else-if="tab === 'manage'" class="ledger-manage">
+      <BookPanel :books="books" :busy="busy" @changed="reload()" @error="emit('error', $event)" @notice="emit('notice', $event)" @view-entries="viewBookEntries" />
       <AccountPanel :accounts="accounts" :busy="busy" @changed="reload()" @error="emit('error', $event)" @notice="emit('notice', $event)" @view-entries="viewAccountEntries" />
       <CategoryPanel :categories="categories" :busy="busy" @changed="reload()" @error="emit('error', $event)" @notice="emit('notice', $event)" />
       <PayeePanel :payees="payees" :busy="busy" @changed="reload()" @error="emit('error', $event)" @notice="emit('notice', $event)" />
     </div>
-    <ReportPanel v-else :stats="stats" :month="month" />
+    <ReportPanel v-else :stats="scopedStats" :month="month" :book-name="selectedBook?.name ?? ''" />
 
     <EntryForm
       v-if="editing !== undefined"
       :key="editing?.id ?? 'new'"
       :item="editing || undefined"
+      :books="books"
+      :default-book-id="bookFilter"
       :accounts="accounts.filter((row) => !row.archived || row.id === editing?.account_id)"
       :categories="categories.filter((row) => !row.archived || row.id === editing?.category_id)"
       :payees="payees.filter((row) => !row.archived || row.id === editing?.payee_id)"

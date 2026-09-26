@@ -58,13 +58,11 @@ def test_bookmark_url_validation(accounts):
         "https://example.com/" + "a" * 2100,
         "",
     ):
-        response = alice.post(
-            "/api/bookmarks", json={"url": url, "title": "x"}, headers=headers
-        )
+        response = alice.post("/api/bookmarks", json={"url": url, "title": "x"}, headers=headers)
         assert response.status_code == 422, (url, response.status_code)
-    assert alice.post(
-        "/api/bookmarks", json={"title": "缺网址"}, headers=headers
-    ).status_code == 422
+    assert (
+        alice.post("/api/bookmarks", json={"title": "缺网址"}, headers=headers).status_code == 422
+    )
     assert (
         alice.post(
             "/api/bookmarks",
@@ -105,9 +103,9 @@ def test_bookmark_search_folder_filter_and_starred_order(accounts):
     assert [
         row["title"] for row in alice.get("/api/bookmarks?q=example.com", headers=headers).json()
     ] == ["服务器面板", "未分组站点", "文档中心"]
-    assert [
-        row["title"] for row in alice.get("/api/bookmarks?q=内网", headers=headers).json()
-    ] == ["文档中心"]
+    assert [row["title"] for row in alice.get("/api/bookmarks?q=内网", headers=headers).json()] == [
+        "文档中心"
+    ]
     assert alice.get("/api/bookmarks?q=不存在的关键词", headers=headers).json() == []
 
 

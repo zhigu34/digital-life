@@ -1,10 +1,19 @@
 import { describe, expect, it } from "vitest";
-import type { LedgerAccount, LedgerEntry, StatsLedgerCategory } from "../src/types";
+import type {
+  Expense,
+  LedgerAccount,
+  LedgerBook,
+  LedgerEntry,
+  StatsLedgerCategory,
+} from "../src/types";
 import {
   accountNet,
+  bookName,
   categoryShares,
   entryAccountLabel,
+  filterBillsByBook,
   filterByAccount,
+  filterByBook,
   groupEntriesByDay,
   monthlySummary,
   signedAmount,
@@ -24,9 +33,29 @@ function entry(overrides: Partial<LedgerEntry> = {}): LedgerEntry {
     to_account_id: null,
     category_id: null,
     payee_id: null,
+    book_id: null,
     note: "",
     expense_id: null,
     created_at: "2026-09-05T10:00:00",
+    ...overrides,
+  };
+}
+
+function bill(overrides: Partial<Expense> = {}): Expense {
+  return {
+    id: nextId++,
+    title: "宽带费",
+    amount_cents: 12900,
+    currency: "CNY",
+    period_months: 1,
+    next_due: "2026-09-20",
+    anchor_day: 20,
+    active: true,
+    notes: "",
+    account_id: null,
+    category_id: null,
+    payee_id: null,
+    book_id: null,
     ...overrides,
   };
 }
@@ -181,5 +210,37 @@ describe("signedAmount and account labels", () => {
       ),
     ).toBe("招行储蓄卡 → 微信零钱");
     expect(entryAccountLabel(entry({ account_id: 99 }), accounts)).toBe("已删除账户");
+  });
+});
+
+describe("filterByBook", () => {
+  const books = [
+    { id: 1, name: "日常" },
+    { id: 2, name: "装修" },
+  ] as LedgerBook[];
+
+  it("keeps only the rows filed under the book, and every row when cleared", () => {
+    const daily = entry({ book_id: 1 });
+    const reno = entry({ book_id: 2 });
+    const unfiled = entry({ book_id: null });
+    const all = [daily, reno, unfiled];
+
+    expect(filterByBook(all, 2).map((row) => row.id)).toEqual([reno.id]);
+    expect(filterByBook(all, null)).toEqual(all);
+  });
+
+  it("filters bills the same way and keeps an unfiled bill out of every book", () => {
+    const daily = bill({ book_id: 1 });
+    const reno = bill({ book_id: 2 });
+    const unfiled = bill({ book_id: null });
+
+    expect(filterBillsByBook([daily, reno, unfiled], 1)).toEqual([daily]);
+    expect(filterBillsByBook([daily, reno, unfiled], null)).toHaveLength(3);
+  });
+
+  it("names a book and falls back for a row that carries none", () => {
+    expect(bookName(books, 2)).toBe("装修");
+    expect(bookName(books, null)).toBe("未归类");
+    expect(bookName(books, 99)).toBe("未归类");
   });
 });

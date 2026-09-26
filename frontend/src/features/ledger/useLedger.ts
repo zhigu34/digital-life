@@ -1,9 +1,16 @@
 import { ref } from "vue";
-import type { LedgerAccount, LedgerCategory, LedgerEntry, LedgerPayee } from "../../types";
+import type {
+  LedgerAccount,
+  LedgerBook,
+  LedgerCategory,
+  LedgerEntry,
+  LedgerPayee,
+} from "../../types";
 import {
   createEntry,
   deleteEntry,
   listAccounts,
+  listBooks,
   listCategories,
   listEntries,
   listPayees,
@@ -11,10 +18,12 @@ import {
 } from "./api";
 
 /**
- * Accounts, categories, payees and entries load together: entries render names
- * from the other three, and the window (last 12 months, server-capped) is small.
+ * Books, accounts, categories, payees and entries load together: entries render
+ * names from the dictionaries, and the window (last 12 months, server-capped)
+ * is small.
  */
 export function useLedger() {
+  const books = ref<LedgerBook[]>([]);
   const accounts = ref<LedgerAccount[]>([]);
   const categories = ref<LedgerCategory[]>([]);
   const payees = ref<LedgerPayee[]>([]);
@@ -24,18 +33,24 @@ export function useLedger() {
   const error = ref("");
   let loadVersion = 0;
 
+  /**
+   * Every book's entries are loaded, never only the selected book's: switching
+   * the filter has to be instant, and the server already caps the window.
+   */
   async function load() {
     const version = ++loadVersion;
     loading.value = true;
     error.value = "";
     try {
-      const [accountRows, categoryRows, payeeRows, entryRows] = await Promise.all([
+      const [bookRows, accountRows, categoryRows, payeeRows, entryRows] = await Promise.all([
+        listBooks(),
         listAccounts(),
         listCategories(),
         listPayees(),
         listEntries(),
       ]);
       if (version !== loadVersion) return;
+      books.value = bookRows;
       accounts.value = accountRows;
       categories.value = categoryRows;
       payees.value = payeeRows;
@@ -80,6 +95,7 @@ export function useLedger() {
 
   function reset() {
     loadVersion++;
+    books.value = [];
     accounts.value = [];
     categories.value = [];
     payees.value = [];
@@ -90,6 +106,7 @@ export function useLedger() {
   }
 
   return {
+    books,
     accounts,
     categories,
     payees,

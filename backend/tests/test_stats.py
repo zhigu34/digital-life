@@ -299,3 +299,42 @@ def test_stats_reports_actual_ledger_money_beside_the_projected_dues(accounts):
         "ledger"
     ]
     assert bob_ledger == {"categories": [], "payees": []}
+
+
+def test_stats_scopes_money_and_projected_dues_to_one_book(accounts):
+    _, _, _, alice, headers, _, _ = accounts
+    reno = alice.post("/api/ledger/books", json={"name": "装修"}, headers=headers).json()
+    card = alice.post(
+        "/api/ledger/accounts",
+        json={"name": "招行储蓄卡", "currency": "CNY", "opening_balance_cents": 0},
+        headers=headers,
+    ).json()
+
+    ledger_entry(alice, headers, amount_cents=320000, account_id=card["id"], book_id=reno["id"])
+    # Filed under no book: it belongs to the whole ledger, not to whichever book
+    # happens to be open.
+    ledger_entry(alice, headers, amount_cents=5800, account_id=card["id"])
+    for title, amount, book in (("装修贷", 500000, reno["id"]), ("宽带费", 12900, None)):
+        payload = {
+            "title": title,
+            "amount_cents": amount,
+            "period_months": 1,
+            "next_due": "2026-09-20",
+        }
+        if book is not None:
+            payload["book_id"] = book
+        response = alice.post("/api/expenses", json=payload, headers=headers)
+        assert response.status_code == 201, response.text
+
+    def september(response):
+        return next(row for row in response.json()["months"] if row["month"] == "2026-09")
+
+    everything = alice.get("/api/stats", params={"end_month": "2026-09"}, headers=headers)
+    assert september(everything)["ledger_expense"] == {"CNY": 325800}
+    assert september(everything)["expense_due"] == {"CNY": 512900}
+
+    reno_only = alice.get(
+        "/api/stats", params={"end_month": "2026-09", "book_id": reno["id"]}, headers=headers
+    )
+    assert september(reno_only)["ledger_expense"] == {"CNY": 320000}
+    assert september(reno_only)["expense_due"] == {"CNY": 500000}

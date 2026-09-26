@@ -35,6 +35,14 @@ def make_payee(client, headers, name="老张面馆", **overrides):
     return response.json()
 
 
+def make_book(client, headers, name="装修", **overrides):
+    payload = {"name": name}
+    payload.update(overrides)
+    response = client.post("/api/ledger/books", json=payload, headers=headers)
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
 def make_entry(client, headers, **overrides):
     payload = {"occurred_on": recent(), "kind": "expense", "amount_cents": 2000, "currency": "CNY"}
     payload.update(overrides)
@@ -498,3 +506,106 @@ def test_bill_defaults_must_belong_to_the_caller(accounts):
         ).status_code
         == 200
     )
+
+
+def test_default_book_is_seeded_and_per_user(accounts):
+    _, _, _, alice, ah, bob, bh = accounts
+    assert [row["name"] for row in alice.get("/api/ledger/books").json()] == ["日常"]
+
+    make_book(alice, ah, name="装修")
+    assert [row["name"] for row in alice.get("/api/ledger/books").json()] == ["日常", "装修"]
+
+    # Seeding is per user, so a second account gets its own untouched book.
+    assert [row["name"] for row in bob.get("/api/ledger/books").json()] == ["日常"]
+
+
+def test_book_crud_and_duplicate_name(accounts):
+    _, _, _, alice, ah, _, _ = accounts
+    book = make_book(alice, ah, name="  装修  ")
+    assert book["name"] == "装修"
+    assert alice.post("/api/ledger/books", json={"name": "装修"}, headers=ah).status_code == 409
+
+    renamed = alice.patch(
+        f"/api/ledger/books/{book['id']}",
+        json={"name": "装修 2026", "archived": True},
+        headers=ah,
+    )
+    assert renamed.status_code == 200
+    assert renamed.json()["name"] == "装修 2026"
+    assert renamed.json()["archived"] is True
+
+    assert alice.delete(f"/api/ledger/books/{book['id']}", headers=ah).status_code == 204
+    assert alice.get(f"/api/ledger/books/{book['id']}").status_code == 404
+
+
+def test_book_id_cannot_be_borrowed(accounts):
+    _, _, _, alice, ah, bob, bh = accounts
+    book = make_book(bob, bh, name="bob 的账本")
+    card = make_account(alice, ah)
+
+    assert bob.get(f"/api/ledger/books/{book['id']}").json()["name"] == "bob 的账本"
+    assert alice.get(f"/api/ledger/books/{book['id']}").status_code == 404
+    borrowed = alice.patch(f"/api/ledger/books/{book['id']}", json={"name": "借来的"}, headers=ah)
+    assert borrowed.status_code == 404
+    assert alice.delete(f"/api/ledger/books/{book['id']}", headers=ah).status_code == 404
+
+    stolen = alice.post(
+        "/api/ledger/entries",
+        json={
+            "occurred_on": recent(),
+            "kind": "expense",
+            "amount_cents": 100,
+            "currency": "CNY",
+            "account_id": card["id"],
+            "book_id": book["id"],
+        },
+        headers=ah,
+    )
+    assert stolen.status_code == 422
+
+
+def test_book_delete_blocked_while_referenced(accounts):
+    _, _, _, alice, ah, _, _ = accounts
+    card = make_account(alice, ah)
+    by_entry = make_book(alice, ah, name="装修")
+    make_entry(alice, ah, account_id=card["id"], book_id=by_entry["id"])
+    assert alice.delete(f"/api/ledger/books/{by_entry['id']}", headers=ah).status_code == 409
+
+    by_bill = make_book(alice, ah, name="旅行")
+    bill = make_bill(alice, ah, account_id=card["id"], book_id=by_bill["id"])
+    assert bill["book_id"] == by_bill["id"]
+    assert alice.delete(f"/api/ledger/books/{by_bill['id']}", headers=ah).status_code == 409
+
+
+def test_entries_filter_by_book_and_balances_stay_whole(accounts):
+    _, _, _, alice, ah, _, _ = accounts
+    card = make_account(alice, ah, opening_balance_cents=0)
+    reno = make_book(alice, ah, name="装修")
+    daily = make_book(alice, ah, name="日常2")
+
+    make_entry(alice, ah, amount_cents=320000, account_id=card["id"], book_id=reno["id"])
+    make_entry(alice, ah, amount_cents=5800, account_id=card["id"], book_id=daily["id"])
+
+    assert len(alice.get("/api/ledger/entries").json()) == 2
+    only_reno = alice.get(f"/api/ledger/entries?book_id={reno['id']}").json()
+    assert [row["amount_cents"] for row in only_reno] == [320000]
+
+    # A book is only a label: the account still owns both entries, so its derived
+    # balance covers the whole ledger rather than one book's slice.
+    assert balances_of(alice, ah) == {card["id"]: -325800}
+
+
+def test_confirm_pay_files_the_entry_under_the_bills_book(accounts):
+    _, _, _, alice, ah, _, _ = accounts
+    card = make_account(alice, ah)
+    reno = make_book(alice, ah, name="装修")
+    bill = make_bill(alice, ah, account_id=card["id"], book_id=reno["id"])
+
+    confirm_pay(alice, ah, bill["id"])
+    filed = alice.get(f"/api/ledger/entries?book_id={reno['id']}").json()
+    assert [row["book_id"] for row in filed] == [reno["id"]]
+
+    # One payment may be re-filed without rewriting the bill's own default.
+    travel = make_book(alice, ah, name="旅行")
+    confirm_pay(alice, ah, bill["id"], {"book_id": travel["id"]})
+    assert len(alice.get(f"/api/ledger/entries?book_id={travel['id']}").json()) == 1

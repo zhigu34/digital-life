@@ -2,10 +2,18 @@ import { api } from "../../api";
 import type {
   Expense,
   LedgerAccount,
+  LedgerBook,
   LedgerCategory,
   LedgerEntry,
   LedgerPayee,
 } from "../../types";
+
+export const listBooks = () => api<LedgerBook[]>("/ledger/books");
+export const createBook = (data: Record<string, unknown>) =>
+  api<LedgerBook>("/ledger/books", "POST", data);
+export const updateBook = (id: number, data: Record<string, unknown>) =>
+  api<LedgerBook>(`/ledger/books/${id}`, "PATCH", data);
+export const deleteBook = (id: number) => api<void>(`/ledger/books/${id}`, "DELETE");
 
 export const listAccounts = () => api<LedgerAccount[]>("/ledger/accounts");
 export const createAccount = (data: Record<string, unknown>) =>
@@ -30,7 +38,16 @@ export const deletePayee = (id: number) => api<void>(`/ledger/payees/${id}`, "DE
 export const mergePayee = (id: number, into: number) =>
   api<{ entries: number; expenses: number }>(`/ledger/payees/${id}/merge`, "POST", { into });
 
-export const listEntries = () => api<LedgerEntry[]>("/ledger/entries");
+/**
+ * Entries of one book, or of every book when no id is given. Only this request
+ * is scoped: accounts and the dictionaries stay shared across books.
+ */
+export const listEntries = (bookId?: number | null) =>
+  api<LedgerEntry[]>(
+    bookId === undefined || bookId === null
+      ? "/ledger/entries"
+      : `/ledger/entries?book_id=${bookId}`,
+  );
 export const createEntry = (data: Record<string, unknown>) =>
   api<LedgerEntry>("/ledger/entries", "POST", data);
 export const updateEntry = (id: number, data: Record<string, unknown>) =>
@@ -41,7 +58,8 @@ export type PayResult = Expense & { entry_id: number | null };
 
 /**
  * Confirming a bill as paid. An empty body keeps the pre-ledger behaviour (only
- * the due date moves); the bill's own account decides whether an entry follows.
+ * the due date moves); the bill's own account decides whether an entry follows,
+ * and that entry inherits the bill's book.
  */
 export const payExpense = (id: number, body: Record<string, unknown> = {}) =>
   api<PayResult>(`/expenses/${id}/pay`, "POST", body);

@@ -22,6 +22,25 @@ EntryId = Annotated[StrictInt, Field(ge=1, le=MAX_ID)]
 SortOrder = Annotated[StrictInt, Field(ge=0, le=MAX_SORT_ORDER)]
 
 
+class BookPayload(Payload):
+    name: Annotated[str, Field(min_length=1, max_length=20)]
+    archived: StrictBool = False
+    sort_order: SortOrder = 0
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def strip_name(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
+
+class BookView(BookPayload):
+    id: int
+    created_at: datetime
+
+
+BookPatch = patch_schema("BookPatch", BookPayload)
+
+
 class AccountPayload(Payload):
     name: Annotated[str, Field(min_length=1, max_length=40)]
     kind: AccountKind = "debit"
@@ -108,6 +127,7 @@ class ExpensePayPayload(Payload):
     account_id: EntryId | None = None
     category_id: EntryId | None = None
     payee_id: EntryId | None = None
+    book_id: EntryId | None = None
 
 
 class EntryPayload(Payload):
@@ -120,6 +140,9 @@ class EntryPayload(Payload):
     to_account_id: EntryId | None = None
     category_id: EntryId | None = None
     payee_id: EntryId | None = None
+    # Filing under a book is what makes a specialised ledger possible. Transfers
+    # may carry one too, so a move between accounts stays grouped.
+    book_id: EntryId | None = None
     note: Notes = ""
 
     @model_validator(mode="after")
@@ -155,6 +178,9 @@ __all__ = [
     "AccountPatch",
     "AccountPayload",
     "AccountView",
+    "BookPatch",
+    "BookPayload",
+    "BookView",
     "CategoryKind",
     "CategoryPatch",
     "CategoryPayload",

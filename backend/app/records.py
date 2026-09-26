@@ -21,6 +21,7 @@ from app.models import (
     CheckInLog,
     Expense,
     LedgerAccount,
+    LedgerBook,
     LedgerCategory,
     LedgerEntry,
     LedgerPayee,
@@ -176,6 +177,7 @@ def pay_expense(
     account_id = options.account_id if options.account_id is not None else expense.account_id
     category_id = options.category_id if options.category_id is not None else expense.category_id
     payee_id = options.payee_id if options.payee_id is not None else expense.payee_id
+    book_id = options.book_id if options.book_id is not None else expense.book_id
     occurred_on = options.occurred_on or user_today(identity.user.timezone)
     check_entry_date(occurred_on, identity.user.timezone)
 
@@ -188,6 +190,7 @@ def pay_expense(
             "account_id": account_id,
             "category_id": category_id,
             "payee_id": payee_id,
+            "book_id": book_id,
         }
         # Validate before advancing the due date: a rejected link must not leave
         # a bill that moved on without recording the payment.
@@ -293,6 +296,7 @@ def export_data(identity: Identity = Depends(authenticated), db: Session = Depen
         ]
 
     # Balances are derived, so they are not exported; the importer recomputes them.
+    data["ledger_books"] = ledger_export(LedgerBook, ("name", "archived", "sort_order"))
     data["ledger_accounts"] = ledger_export(
         LedgerAccount,
         ("name", "kind", "currency", "opening_balance_cents", "archived", "sort_order"),
@@ -313,6 +317,7 @@ def export_data(identity: Identity = Depends(authenticated), db: Session = Depen
             "to_account_id",
             "category_id",
             "payee_id",
+            "book_id",
             "note",
             "expense_id",
         ),

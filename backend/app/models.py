@@ -71,6 +71,9 @@ class Expense(Owned, Base):
     account_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     category_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     payee_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Which book this bill belongs to; the entry it generates inherits it.
+    # Added by ALTER TABLE in migration 0010, so it carries no REFERENCES.
+    book_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class Show(Owned, Base):
@@ -167,6 +170,21 @@ class MaintenanceLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime)
 
 
+class LedgerBook(Owned, Base):
+    """A named container that scopes entries and bills.
+
+    A book is a label on the ledger, not a second set of accounts: accounts stay
+    shared by every book, so each balance remains a single derived number.
+    """
+
+    __tablename__ = "ledger_books"
+    __table_args__ = (UniqueConstraint("user_id", "name", name="uq_ledger_books_user_name"),)
+    name: Mapped[str] = mapped_column(String(20))
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+
+
 class LedgerAccount(Owned, Base):
     __tablename__ = "ledger_accounts"
     name: Mapped[str] = mapped_column(String(40))
@@ -221,6 +239,10 @@ class LedgerEntry(Owned, Base):
         ForeignKey("ledger_categories.id"), nullable=True
     )
     payee_id: Mapped[int | None] = mapped_column(ForeignKey("ledger_payees.id"), nullable=True)
+    # Which book this entry is filed under. Added by ALTER TABLE in migration
+    # 0010, so it carries no REFERENCES; the endpoints enforce ownership and
+    # answer 409 instead of cascade-deleting a still-referenced book.
+    book_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     note: Mapped[str] = mapped_column(Text, default="")
     # Set when a recurring bill generated this entry; deleting the bill keeps the entry.
     expense_id: Mapped[int | None] = mapped_column(

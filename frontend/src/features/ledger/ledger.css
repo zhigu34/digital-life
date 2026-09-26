@@ -23,6 +23,25 @@
   color: var(--ledger-expense, #b77c46);
 }
 
+/* Book switcher. It scopes the cards, the list, the bills and the report at once,
+   so it sits above the summary instead of inside the entries toolbar. */
+.ledger-book-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--soft);
+}
+.ledger-book-bar .summary-note {
+  flex: 1;
+  min-width: 200px;
+  margin: 0;
+}
+
 .ledger-summary {
   display: grid;
   gap: 12px;
@@ -181,6 +200,14 @@
   background: var(--green-soft);
   color: var(--green);
 }
+/* The book stays a neutral label: it must not compete with the expense/income
+   colours sharing the same row. */
+.book-tag {
+  background: var(--soft);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-weight: 400;
+}
 
 /* Bills tab */
 .bill-heading,
@@ -249,6 +276,29 @@
   border-radius: 16px;
   background: var(--surface);
 }
+/* Books are few and short, so they stay inline chips rather than cards. */
+.book-chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.book-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--soft);
+  font-size: 13px;
+}
+.book-chip.inactive {
+  opacity: 0.7;
+}
+
 .account-cards {
   list-style: none;
   margin: 0;

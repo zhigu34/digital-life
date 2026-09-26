@@ -30,6 +30,8 @@ export interface Expense {
   account_id: number | null;
   category_id: number | null;
   payee_id: number | null;
+  /** The book this bill is filed under; null only for rows no book ever claimed. */
+  book_id: number | null;
 }
 export interface Show {
   id: number;
@@ -114,6 +116,17 @@ export type CategoryKind = "income" | "expense";
 export type PayeeKind = "merchant" | "org" | "person";
 export type EntryKind = "income" | "expense" | "transfer";
 export const currencies = ["CNY", "USD", "EUR", "JPY", "HKD"] as const;
+/**
+ * A named container that scopes entries and bills. Accounts stay shared, so a
+ * book never changes a balance — it only groups what was earned or spent.
+ */
+export interface LedgerBook {
+  id: number;
+  name: string;
+  archived: boolean;
+  sort_order: number;
+  created_at: string;
+}
 export interface LedgerAccount {
   id: number;
   name: string;
@@ -153,6 +166,8 @@ export interface LedgerEntry {
   to_account_id: number | null;
   category_id: number | null;
   payee_id: number | null;
+  /** Scopes the entry to a book for reporting; account balances still span all of them. */
+  book_id: number | null;
   note: string;
   /** Set when a recurring bill generated this entry. */
   expense_id: number | null;

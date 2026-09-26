@@ -170,6 +170,98 @@ test('an unbound bill only advances the due date', async ({ page }) => {
   await expect(page.getByText('还没有一笔流水')).toBeVisible()
 })
 
+test('books label entries without splitting account balances', async ({ page }) => {
+  await login(page, await account())
+  await navigate(page, '记账')
+
+  await tab(page, '管理')
+  await addAccount(page, '主力卡', '2000')
+
+  // The first visit already seeded a default book; a new one joins it.
+  await expect(page.locator('.book-chip').filter({ hasText: '日常' })).toBeVisible()
+  await page.getByRole('button', { name: '添加账本', exact: true }).click()
+  const bookDialog = page.getByRole('dialog')
+  await bookDialog.getByLabel('名称', { exact: true }).fill('装修')
+  await bookDialog.getByRole('button', { name: '保存账本', exact: true }).click()
+  await expect(bookDialog).toHaveCount(0)
+  await expect(page.locator('.book-chip').filter({ hasText: '装修' })).toBeVisible()
+
+  // File an entry under it.
+  await tab(page, '流水')
+  await page.getByRole('button', { name: '记一笔', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByLabel(/^金额/).fill('1200')
+  await dialog.getByLabel(/^日期/).fill(localToday())
+  await dialog.getByLabel(/^账户/).selectOption({ label: '主力卡（CNY）' })
+  await dialog.getByLabel(/^分类/).selectOption({ label: '居住' })
+  await dialog.getByLabel(/^账本/).selectOption({ label: '装修' })
+  await dialog.getByRole('button', { name: '保存记录', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+
+  // The unfiltered list tags each row with the book it belongs to.
+  const row = page.locator('.ledger-row').filter({ hasText: '居住' })
+  await expect(row.locator('.book-tag')).toHaveText('装修')
+
+  // Switching to another book hides it and scopes the summary cards.
+  await page.locator('.ledger-book-bar select').selectOption({ label: '日常' })
+  await expect(page.locator('.ledger-row').filter({ hasText: '居住' })).toHaveCount(0)
+  await expect(page.locator('.ledger-summary')).toContainText('日常')
+
+  await page.locator('.ledger-book-bar select').selectOption({ label: '装修' })
+  await expect(page.locator('.ledger-row').filter({ hasText: '居住' })).toBeVisible()
+
+  // Balances span all books, so filtering never moves them.
+  await tab(page, '管理')
+  await expect(card(page, '主力卡')).toContainText('800.00')
+})
+
+test('a book that already has entries can only be archived, not deleted', async ({ page }) => {
+  await login(page, await account())
+  await navigate(page, '记账')
+
+  await tab(page, '管理')
+  await addAccount(page, '零钱', '300')
+  await page.getByRole('button', { name: '添加账本', exact: true }).click()
+  let dialog = page.getByRole('dialog')
+  await dialog.getByLabel('名称', { exact: true }).fill('旅行')
+  await dialog.getByRole('button', { name: '保存账本', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+
+  await tab(page, '流水')
+  await page.getByRole('button', { name: '记一笔', exact: true }).click()
+  dialog = page.getByRole('dialog')
+  await dialog.getByLabel(/^金额/).fill('18')
+  await dialog.getByLabel(/^日期/).fill(localToday())
+  await dialog.getByLabel(/^账户/).selectOption({ label: '零钱（CNY）' })
+  await dialog.getByLabel(/^账本/).selectOption({ label: '旅行' })
+  await dialog.getByRole('button', { name: '保存记录', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+
+  // A referenced book refuses the delete (409) and the page says why.
+  await tab(page, '管理')
+  const chip = page.locator('.book-chip').filter({ hasText: '旅行' })
+  await chip.getByRole('button', { name: '删除 旅行', exact: true }).click()
+  await expect(page.locator('.global-error')).toContainText('该账本已有流水或账单')
+  await expect(chip).toBeVisible()
+  // Dismiss it, otherwise the banner (and the tab helper's clean-slate check) lingers.
+  await page.getByRole('button', { name: '关闭错误提示', exact: true }).click()
+  await expect(page.locator('.global-error')).toHaveCount(0)
+
+  // Archiving takes it out of the picker without touching the entries.
+  await chip.getByRole('button', { name: '编辑 旅行', exact: true }).click()
+  dialog = page.getByRole('dialog')
+  await dialog.getByLabel(/归档/).check()
+  await dialog.getByRole('button', { name: '保存账本', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(page.locator('.book-chip').filter({ hasText: '旅行' })).toContainText('已归档')
+
+  // An archived book drops out of the entry picker but still scopes the view.
+  await page.locator('.ledger-book-bar select').selectOption({ label: '旅行（已归档）' })
+  await expect(page.locator('.ledger-summary')).toContainText('¥18.00')
+  await tab(page, '流水')
+  await expect(page.locator('.ledger-row').filter({ hasText: '18.00' })).toBeVisible()
+})
+
 test('the record shortcut opens the form only when it is used', async ({ page }) => {
   await login(page, await account())
 

@@ -1,5 +1,6 @@
 import calendar
 from datetime import date
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -7,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import Identity, authenticated
 from app.database import get_db
+from app.ledger.schemas import MAX_ID
 from app.models import (
     Expense,
     LedgerCategory,
@@ -38,6 +40,7 @@ def parse_end_month(value: str) -> date:
 @router.get("/stats")
 def statistics(
     end_month: str = Query(...),
+    book_id: Annotated[int, Query(ge=1, le=MAX_ID)] | None = None,
     identity: Identity = Depends(authenticated),
     db: Session = Depends(get_db),
 ):
@@ -58,9 +61,12 @@ def statistics(
         )
     by_month = {entry["month"]: entry for entry in months}
 
-    for expense in db.scalars(
-        select(Expense).where(Expense.user_id == identity.user.id, Expense.active)
-    ):
+    bill_conditions = [Expense.user_id == identity.user.id, Expense.active]
+    if book_id is not None:
+        # Projected dues follow the selected book's own bills, so a specialised
+        # book never inherits the rest of the household's committed spending.
+        bill_conditions.append(Expense.book_id == book_id)
+    for expense in db.scalars(select(Expense).where(*bill_conditions)):
         due_index = expense.next_due.year * 12 + expense.next_due.month - 1
         for index, entry in enumerate(months, end_index - WINDOW_MONTHS + 1):
             distance = index - due_index
@@ -93,13 +99,14 @@ def statistics(
     month_key = f"{end.year:04d}-{end.month:02d}"
     category_totals: dict[int, dict[str, int]] = {}
     payee_totals: dict[int | None, dict[str, int]] = {}
-    for record in db.scalars(
-        select(LedgerEntry).where(
-            LedgerEntry.user_id == identity.user.id,
-            LedgerEntry.occurred_on >= window_start,
-            LedgerEntry.occurred_on <= window_end,
-        )
-    ):
+    entry_conditions = [
+        LedgerEntry.user_id == identity.user.id,
+        LedgerEntry.occurred_on >= window_start,
+        LedgerEntry.occurred_on <= window_end,
+    ]
+    if book_id is not None:
+        entry_conditions.append(LedgerEntry.book_id == book_id)
+    for record in db.scalars(select(LedgerEntry).where(*entry_conditions)):
         if record.kind == "transfer":
             # Moving money between own accounts is neither income nor spending.
             continue

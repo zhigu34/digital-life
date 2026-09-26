@@ -15,6 +15,9 @@ from app.ledger.schemas import (
     AccountPatch,
     AccountPayload,
     AccountView,
+    BookPatch,
+    BookPayload,
+    BookView,
     CategoryPatch,
     CategoryPayload,
     CategoryView,
@@ -30,13 +33,16 @@ from app.ledger.schemas import (
 from app.ledger.service import (
     account_balances,
     account_in_use,
+    book_in_use,
     category_in_use,
     check_entry_date,
+    ensure_default_book,
     ensure_default_categories,
     merge_payees,
     months_before,
     now,
     owned_account,
+    owned_book,
     owned_category,
     owned_entry,
     owned_payee,
@@ -44,7 +50,7 @@ from app.ledger.service import (
     payee_key,
     validate_entry_references,
 )
-from app.models import LedgerAccount, LedgerCategory, LedgerEntry, LedgerPayee
+from app.models import LedgerAccount, LedgerBook, LedgerCategory, LedgerEntry, LedgerPayee
 from app.schemas import ResourceId
 from app.timezones import user_today
 
@@ -54,6 +60,73 @@ router = APIRouter(prefix="/api/ledger", tags=["ledger"])
 ENTRY_WINDOW_MONTHS = 12
 ENTRY_LIMIT_DEFAULT = 500
 ENTRY_LIMIT_MAX = 2000
+
+
+@router.get("/books", response_model=list[BookView])
+def list_books(identity: Identity = Depends(authenticated), db: Session = Depends(get_db)):
+    ensure_default_book(db, identity.user.id)
+    return db.scalars(
+        select(LedgerBook)
+        .where(LedgerBook.user_id == identity.user.id)
+        .order_by(LedgerBook.sort_order, LedgerBook.id)
+    ).all()
+
+
+@router.post("/books", response_model=BookView, status_code=201)
+def create_book(
+    payload: BookPayload,
+    identity: Identity = Depends(authenticated),
+    db: Session = Depends(get_db),
+):
+    book = LedgerBook(user_id=identity.user.id, created_at=now(), **payload.model_dump())
+    db.add(book)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "已存在同名账本") from None
+    return book
+
+
+@router.get("/books/{item_id}", response_model=BookView)
+def get_book(
+    item_id: ResourceId,
+    identity: Identity = Depends(authenticated),
+    db: Session = Depends(get_db),
+):
+    return owned_book(db, item_id, identity.user.id)
+
+
+@router.patch("/books/{item_id}", response_model=BookView)
+def update_book(
+    item_id: ResourceId,
+    payload: BookPatch,
+    identity: Identity = Depends(authenticated),
+    db: Session = Depends(get_db),
+):
+    book = owned_book(db, item_id, identity.user.id)
+    values = validated_patch(BookPayload, book, payload).model_dump()
+    for key, value in values.items():
+        setattr(book, key, value)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "已存在同名账本") from None
+    return book
+
+
+@router.delete("/books/{item_id}", status_code=204)
+def delete_book(
+    item_id: ResourceId,
+    identity: Identity = Depends(authenticated),
+    db: Session = Depends(get_db),
+):
+    book = owned_book(db, item_id, identity.user.id)
+    if book_in_use(db, book.id):
+        raise HTTPException(409, "该账本已有流水或账单，请改为归档")
+    db.delete(book)
+    db.commit()
 
 
 def account_view(account: LedgerAccount, balance: int) -> AccountView:
@@ -316,6 +389,7 @@ def list_entries(
     account_id: Annotated[int, Query(ge=1, le=MAX_ID)] | None = None,
     category_id: Annotated[int, Query(ge=1, le=MAX_ID)] | None = None,
     payee_id: Annotated[int, Query(ge=1, le=MAX_ID)] | None = None,
+    book_id: Annotated[int, Query(ge=1, le=MAX_ID)] | None = None,
     limit: Annotated[int, Query(ge=1, le=ENTRY_LIMIT_MAX)] = ENTRY_LIMIT_DEFAULT,
     identity: Identity = Depends(authenticated),
     db: Session = Depends(get_db),
@@ -343,6 +417,8 @@ def list_entries(
         statement = statement.where(LedgerEntry.category_id == category_id)
     if payee_id is not None:
         statement = statement.where(LedgerEntry.payee_id == payee_id)
+    if book_id is not None:
+        statement = statement.where(LedgerEntry.book_id == book_id)
     return db.scalars(
         statement.order_by(LedgerEntry.occurred_on.desc(), LedgerEntry.id.desc()).limit(limit)
     ).all()

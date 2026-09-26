@@ -138,6 +138,7 @@ class ExpensePayload(Payload):
     account_id: Annotated[StrictInt, Field(ge=1, le=2**63 - 1)] | None = None
     category_id: Annotated[StrictInt, Field(ge=1, le=2**63 - 1)] | None = None
     payee_id: Annotated[StrictInt, Field(ge=1, le=2**63 - 1)] | None = None
+    book_id: Annotated[StrictInt, Field(ge=1, le=2**63 - 1)] | None = None
 
     @field_validator("anchor_day", mode="before")
     @classmethod

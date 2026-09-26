@@ -71,6 +71,7 @@ def test_import_replaces_account_data_from_export(accounts):
         "checkins": 0,
         "checkin_logs": 0,
         "projects": 0,
+        "ledger_books": 0,
         "ledger_accounts": 0,
         "ledger_categories": 0,
         "ledger_payees": 0,
@@ -171,7 +172,8 @@ def test_import_only_touches_the_callers_account(accounts):
 
 
 def ledger_fixture(client, headers):
-    """One linked account/category/payee plus an entry and a bill using them."""
+    """One linked book/account/category/payee plus an entry and a bill using them."""
+    book = client.post("/api/ledger/books", json={"name": "装修"}, headers=headers).json()
     account = client.post(
         "/api/ledger/accounts",
         json={"name": "招行储蓄卡", "currency": "CNY", "opening_balance_cents": 100000},
@@ -191,6 +193,7 @@ def ledger_fixture(client, headers):
             "account_id": account["id"],
             "category_id": category["id"],
             "payee_id": payee["id"],
+            "book_id": book["id"],
             "note": "导入测试",
         },
         headers=headers,
@@ -204,10 +207,18 @@ def ledger_fixture(client, headers):
             "account_id": account["id"],
             "category_id": category["id"],
             "payee_id": payee["id"],
+            "book_id": book["id"],
         },
         headers=headers,
     ).json()
-    return {"account": account, "category": category, "payee": payee, "entry": entry, "bill": bill}
+    return {
+        "book": book,
+        "account": account,
+        "category": category,
+        "payee": payee,
+        "entry": entry,
+        "bill": bill,
+    }
 
 
 def test_import_round_trips_the_ledger_with_remapped_ids(accounts):
@@ -221,6 +232,7 @@ def test_import_round_trips_the_ledger_with_remapped_ids(accounts):
     result = bob.post("/api/import", json=export, headers=bh)
     assert result.status_code == 200, result.text
     imported = result.json()["imported"]
+    assert imported["ledger_books"] == 1
     assert imported["ledger_accounts"] == 1
     assert imported["ledger_categories"] == 1
     assert imported["ledger_payees"] == 1
@@ -242,11 +254,16 @@ def test_import_round_trips_the_ledger_with_remapped_ids(accounts):
     new_payee_id = bob.get("/api/ledger/payees", headers=bh).json()[0]["id"]
     assert rows[0]["category_id"] == new_category_id
     assert rows[0]["payee_id"] == new_payee_id
+    books_of_bob = bob.get("/api/ledger/books", headers=bh).json()
+    assert [row["name"] for row in books_of_bob] == ["装修"]
+    assert books_of_bob[0]["id"] != source["book"]["id"]
+    assert rows[0]["book_id"] == books_of_bob[0]["id"]
 
     bill = bob.get("/api/expenses", headers=bh).json()[0]
     assert bill["account_id"] == new_account_id
     assert bill["category_id"] == new_category_id
     assert bill["payee_id"] == new_payee_id
+    assert bill["book_id"] == books_of_bob[0]["id"]
 
 
 def test_import_rejects_dangling_ledger_references(accounts):
@@ -285,3 +302,46 @@ def test_importing_a_pre_ledger_export_clears_the_ledger(accounts):
     # Replace-everything means the missing keys import as empty collections.
     assert bob.get("/api/ledger/accounts", headers=bh).json() == []
     assert bob.get("/api/ledger/entries", headers=bh).json() == []
+
+
+def without_books(export):
+    """Strip books the way a backup taken before migration 0010 would look."""
+    export.pop("ledger_books")
+    for key in ("ledger_entries", "expenses"):
+        for row in export[key]:
+            row.pop("book_id")
+    return export
+
+
+def test_pre_books_export_files_its_rows_under_a_default_book(accounts):
+    _, _, _, alice, ah, bob, bh = accounts
+    ledger_fixture(alice, ah)
+    export = without_books(alice.get("/api/export", headers=ah).json())
+
+    result = bob.post("/api/import", json=export, headers=bh)
+    assert result.status_code == 200, result.text
+    # The count reports what the file carried; the default book is added by the
+    # importer, not by the backup.
+    assert result.json()["imported"]["ledger_books"] == 0
+
+    books_of_bob = bob.get("/api/ledger/books", headers=bh).json()
+    assert [row["name"] for row in books_of_bob] == ["日常"]
+    default_id = books_of_bob[0]["id"]
+    # Left unlabelled these rows would be invisible in every book view.
+    rows = bob.get("/api/ledger/entries", headers=bh).json()
+    assert [row["book_id"] for row in rows] == [default_id]
+    assert bob.get("/api/expenses", headers=bh).json()[0]["book_id"] == default_id
+
+
+def test_a_rejected_pre_books_import_leaves_the_ledger_untouched(accounts):
+    _, _, _, alice, ah, bob, bh = accounts
+    ledger_fixture(alice, ah)
+    export = without_books(alice.get("/api/export", headers=ah).json())
+    export["ledger_entries"][0]["account_id"] = 999999
+    keeper = bob.post("/api/ledger/accounts", json={"name": "bob 自己的卡"}, headers=bh).json()
+
+    result = bob.post("/api/import", json=export, headers=bh)
+    assert result.status_code == 422
+    # Seeding a default book must not commit the delete that runs first.
+    kept = bob.get("/api/ledger/accounts", headers=bh).json()
+    assert [row["id"] for row in kept] == [keeper["id"]]

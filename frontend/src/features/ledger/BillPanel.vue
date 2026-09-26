@@ -4,6 +4,7 @@ import { api } from "../../api";
 import type {
   Expense,
   LedgerAccount,
+  LedgerBook,
   LedgerCategory,
   LedgerPayee,
   Stats,
@@ -18,10 +19,13 @@ import ModalDialog from "../../components/ModalDialog.vue";
 
 const props = defineProps<{
   bills: Expense[];
+  books: LedgerBook[];
   accounts: LedgerAccount[];
   categories: LedgerCategory[];
   payees: LedgerPayee[];
   stats: Stats | null;
+  /** Whichever book the page is filtered by; a new bill is filed there by default. */
+  defaultBookId: number | null;
   today: string;
   busy: boolean;
 }>();
@@ -52,6 +56,8 @@ const expenseCategories = computed(() =>
 
 const editing = ref<Expense | null | undefined>(undefined);
 const formError = ref("");
+/** A bill always lands in some book: the one in view wins, then the first one. */
+const startBookId: number | null = props.defaultBookId ?? props.books[0]?.id ?? null;
 const form = reactive({
   title: "",
   amount: "",
@@ -63,6 +69,7 @@ const form = reactive({
   account_id: null as number | null,
   category_id: null as number | null,
   payee_id: null as number | null,
+  book_id: startBookId as number | null,
   notes: "",
 });
 
@@ -79,6 +86,7 @@ function open(item?: Expense) {
   form.account_id = item?.account_id ?? null;
   form.category_id = item?.category_id ?? null;
   form.payee_id = item?.payee_id ?? null;
+  form.book_id = item?.book_id ?? startBookId;
   form.notes = item?.notes ?? "";
 }
 function close() {
@@ -110,6 +118,7 @@ async function save() {
     account_id: form.account_id,
     category_id: form.category_id,
     payee_id: form.payee_id,
+    book_id: form.book_id,
     notes: form.notes,
   };
   try {

@@ -18,7 +18,7 @@ Task: `{id,title,notes,status,due_date,priority,created_at}`. title 1–160 char
 
 Expense: `{id,title,amount_cents,currency,period_months,next_due,anchor_day,active,notes,account_id,category_id,payee_id}`. title 1–120, amount_cents integer 1–100000000, currency CNY|USD|EUR|JPY|HKD default CNY, period_months 1|3|12 default 1, next_due required date, anchor_day integer 1–31 default next_due day, active default true, notes max 4000 default ''. `account_id/category_id/payee_id` 可空，指向记账域的账户/分类/商户（Alembic `0008`）；给出时必须属于当前用户，否则 422；账单的分类必须是支出类型。PATCH accepts all except id.
 
-`POST /expenses/<id>/pay` 接收可选 `{account_id?,category_id?,payee_id?}`，返回账单对象外加 `entry_id`。请求体缺省时沿用账单自身的绑定；只要最终生效账户非空，就在同一事务内生成一条 `kind='expense'` 的记账流水并把 `entry_id` 指回该流水，否则与旧行为一致、仅推进日期。非交易类字段（账户、分类、商户）在推进 `next_due` **之前** 校验，校验失败不改变 `next_due`。next_due advanced one period using anchor_day (Jan31→Feb28→Mar31); inactive returns 400. Label UI ‘确认本期已付’。
+`POST /expenses/<id>/pay` 接收可选 `{account_id?,category_id?,payee_id?,book_id?}`，返回账单对象外加 `entry_id`。请求体缺省时沿用账单自身的绑定；只要最终生效账户非空，就在同一事务内生成一条 `kind='expense'` 的记账流水并把 `entry_id` 指回该流水，否则与旧行为一致、仅推进日期。`book_id` 的生效顺序同为请求体优先、否则沿用账单自身标签。非交易类字段（账户、分类、商户、账本）在推进 `next_due` **之前** 校验，校验失败不改变 `next_due`。next_due advanced one period using anchor_day (Jan31→Feb28→Mar31); inactive returns 400. Label UI ‘确认本期已付’。
 
 Show: `{id,title,media_type,status,progress,total,score,notes,update_weekday,source,source_id,source_url,poster_path,seasons,air_status,release_year,completed_on}`. title 1–160, media_type anime|tv|movie default tv, status planned|watching|completed|paused default planned, progress integer 0–1000000 default 0, total nullable integer 1–1000000 default null, progress≤total if known. score nullable integer 1–10. notes max4000 default '', update_weekday null or 0–6 Monday–Sunday. source bangumi|tmdb nullable, source_id nullable integer ≥1, source_url nullable http(s) URL max 500, poster_path nullable max 500, seasons nullable 1–1000, air_status airing|ended|upcoming|released nullable, release_year nullable 1000–9999, completed_on nullable ISO date. `POST /shows/<id>/advance` increments progress, sets watching or completed at total, at total returns unchanged; unknown-total progress at 1000000 returns 400. PATCH accepts all except id.
 
@@ -26,7 +26,7 @@ Show: `{id,title,media_type,status,progress,total,score,notes,update_weekday,sou
 
 Milestone: `{id,title,date,repeats_yearly,notes}` title 1–120, date required, repeats_yearly false default, notes max4000 default ''. PATCH accepts all except id.
 
-`GET /export` returns JSON object with user (no hashes/sessions), tasks, expenses, shows, milestones, notes, checkins, projects, bookmarks, maintenance, maintenance_logs, plus 记账域的 `ledger_accounts`、`ledger_categories`、`ledger_payees`、`ledger_entries`。账户余额是派生值，**不导出**。Only own data. Client downloads through authenticated fetch.
+`GET /export` returns JSON object with user (no hashes/sessions), tasks, expenses, shows, milestones, notes, checkins, projects, bookmarks, maintenance, maintenance_logs, plus 记账域的 `ledger_books`、`ledger_accounts`、`ledger_categories`、`ledger_payees`、`ledger_entries`。账户余额与账本金额都是派生值，**不导出**。Only own data. Client downloads through authenticated fetch。
 
 ## Administration
 GET `/admin/users` → User[]. POST `{username,password,display_name}` → User (201, ordinary user). PATCH `/admin/users/<id>` `{display_name?,is_active?,password?}` → User. Disallow administrator self-disable; reset/disable revokes target sessions. Ordinary user gets 403. Admin does not bypass collection ownership.
@@ -47,9 +47,9 @@ Backend CLI via `python -m app.cli`: `migrate`, `create-admin --username USER` (
 
 ## 统计与导入（2026-09-16）
 
-`GET /api/stats?end_month=YYYY-MM` 返回以 end_month 结尾的连续 12 个月窗口：每月 `{month, expense_due: {币种: 分}, maintenance_cost: {币种: 分}, ledger_income: {币种: 分}, ledger_expense: {币种: 分}}`，以及 `shows` 汇总 `{watching,planned,completed,paused,episodes_watched}`。费用口径与「本月应付」一致（仅启用中、从 next_due 整周期外推、不假设支付、月末 anchor、不回溯）；维护费用来自完成历史 `cost_cents` 按完成月归集。**投影与实付并列**：`expense_due` 是账单按周期外推的应付，`ledger_expense`/`ledger_income` 是记账流水按 `occurred_on` 归集的真实收支（转账不计入）。另含 `ledger.categories`（仅 end_month、支出与收入分类合计，未分类不计）与 `ledger.payees`（仅支出、降序取前 8，无商户归为 `未标注商户`）。非法/缺失月份 422；未登录 401；仅含当前会话用户数据。
+`GET /api/stats?end_month=YYYY-MM&book_id=<id>` 返回以 end_month 结尾的连续 12 个月窗口：每月 `{month, expense_due: {币种: 分}, maintenance_cost: {币种: 分}, ledger_income: {币种: 分}, ledger_expense: {币种: 分}}`，以及 `shows` 汇总 `{watching,planned,completed,paused,episodes_watched}`。费用口径与「本月应付」一致（仅启用中、从 next_due 整周期外推、不假设支付、月末 anchor、不回溯）；维护费用来自完成历史 `cost_cents` 按完成月归集。**投影与实付并列**：`expense_due` 是账单按周期外推的应付，`ledger_expense`/`ledger_income` 是记账流水按 `occurred_on` 归集的真实收支（转账不计入）。可选 `book_id` 把账单与流水两路口径同时收窄到该账本（`maintenance_cost` 与 `shows` 不受影响，维护与追剧不属账本维度）。另含 `ledger.categories`（仅 end_month、支出与收入分类合计，未分类不计）与 `ledger.payees`（仅支出、降序取前 8，无商户归为 `未标注商户`）。非法/缺失月份 422；未登录 401；仅含当前会话用户数据。
 
-`POST /api/import` 接收 `/api/export` 生成的完整 JSON 对象，整体替换当前账号的生活记录（tasks、expenses、shows、milestones、maintenance 及 maintenance_logs，以及 ledger_accounts、ledger_categories、ledger_payees、ledger_entries），返回 `{imported: {各集合计数}}`。要求文件含 `user` 对象标记；集合列表缺失按空处理（兼容旧版导出）；单集合上限 10,000、总数上限 50,000；逐条按创建校验规则验证，首条无效即 422 且不改动现有数据；维护事项 id 引用、同日重复历史、日期越界均 422。记账域先清空旧行再重建，账户/分类/商户/账单的 id 全量重映射，流水的账户与分类引用必须能在同文件内解析（悬空 422）；商户按 `name_key`（`strip().casefold()`）归并，同名先合并再复用。导入后 `last_completed`/`next_due` 从导入的历史重算。不修改登录、密码和个人资料；不影响其他账号。
+`POST /api/import` 接收 `/api/export` 生成的完整 JSON 对象，整体替换当前账号的生活记录（tasks、expenses、shows、milestones、maintenance 及 maintenance_logs，以及 ledger_books、ledger_accounts、ledger_categories、ledger_payees、ledger_entries），返回 `{imported: {各集合计数}}`。要求文件含 `user` 对象标记；集合列表缺失按空处理（兼容旧版导出）；单集合上限 10,000、总数上限 50,000；逐条按创建校验规则验证，首条无效即 422 且不改动现有数据；维护事项 id 引用、同日重复历史、日期越界均 422。记账域先清空旧行再重建，账本/账户/分类/商户/账单的 id 全量重映射，流水的账户与分类引用必须能在同文件内解析（悬空 422），`book_id` 为 null 或缺失时落到该账号的默认账本；旧版导出（无 `ledger_books`）若含账单或流水，在同一事务内补建一条默认账本承接，**校验失败回滚时不留下任何改动**。商户按 `name_key`（`strip().casefold()`）归并，同名先合并再复用。导入后 `last_completed`/`next_due` 从导入的历史重算。不修改登录、密码和个人资料；不影响其他账号。
 
 ## 文字随记（2026-09-16）
 
@@ -69,9 +69,14 @@ Backend CLI via `python -m app.cli`: `migrate`, `create-admin --username USER` (
 
 `GET/POST /api/projects`、`GET/PATCH/DELETE /api/projects/{id}`，通用集合规则。Project：`{id,title,notes,status:'active'|'paused'|'done',created_at}`，title 1–120，notes ≤4000，status 默认 active。导出为 `projects`；导入支持，且旧导出中 `checkins.kind=='ongoing'` 的行会转换为 projects（其打卡记录以文字摘要并入 notes）。同期打卡的 kind 仅接受 `daily`（创建/修改 ongoing 返回 422）。Alembic `0006` 建表并把已有 ongoing 打卡迁入 projects；CLI 恢复严格校验 `0006`。
 
-## 记账（2026-09-25）
+## 记账（2026-09-25，账本 2026-09-26）
 
-完整设计见 `docs/superpowers/specs/2026-09-25-ledger-design.md`。四个集合的路由前缀为 `/api/ledger`，归属、CSRF、Origin 规则与其他集合一致。
+完整设计见 `docs/superpowers/specs/2026-09-25-ledger-design.md`。五个集合的路由前缀为 `/api/ledger`，归属、CSRF、Origin 规则与其他集合一致。
+
+**账本 `GET/POST /api/ledger/books`、`GET/PATCH/DELETE /api/ledger/books/{id}`**（2026-09-26）
+Book：`{id,name,archived,sort_order,created_at}`。name 1–20（前后空白自动去除），同一账号内唯一（重复 409 「已存在同名账本」）；archived 默认 false；sort_order 0–1000。账本是**贴在流水与账单上的标签**，不是第二套账户：账户、分类、商户仍然全局共享，余额也仍在账户维度派生，跨账本合计不会被切开。被流水或账单引用的账本删除返回 409（「该账本已有流水或账单，请改为归档」），归档即可从选择器中退出。列表按 `sort_order`、id 升序。
+
+每个账号在首次需要时自动拥有一个默认账本（`ensure_default_book`，名字 `日常`，取自 `sort_order` 最小者）：迁移 `0010` 为历史数据补建，导入旧版导出时在同一事务内补建，手工记账未指定 `book_id` 时落到它。前端对真正为 null 的行显示为 `未归类`（迁移与导入正常路径不会产生这种行，仅作为兜底展示）。
 
 **账户 `GET/POST /api/ledger/accounts`、`GET/PATCH/DELETE /api/ledger/accounts/{id}`**
 Account：`{id,name,kind,currency,opening_balance_cents,archived,sort_order,created_at,balance_cents}`。name 1–40（前后空白自动去除）；kind `cash|debit|credit|ewallet|invest|other` 默认 `debit`；opening_balance_cents 整数 −1,000,000,000..1,000,000,000 默认 0；sort_order 0–1000。**`balance_cents` 是派生值**（期初 + 收入 − 支出 ± 转账），不在任何写入接口中接受，导出时也不落盘；转账对余额两侧同时生效。删除被流水或账单引用的账户返回 409。
@@ -85,11 +90,11 @@ Payee：`{id,name,kind,archived,sort_order,created_at}`。name 1–40，kind `me
 `POST /api/ledger/payees/{id}/merge` `{into: 商户id}` 把源商户的全部引用改指目标商户（流水与账单各返回条数）并在同一事务内删除源商户，响应 `{entries, expenses}`；`into` 指向自身 422，目标不存在或非本人 404。
 
 **流水 `GET/POST /api/ledger/entries`、`GET/PATCH/DELETE /api/ledger/entries/{id}`**
-Entry：`{id,occurred_on,kind,amount_cents,currency,account_id,from_account_id,to_account_id,category_id,payee_id,note,expense_id,created_at}`。occurred_on 必填且**不得晚于用户时区的今天**（422）；amount_cents 1–100,000,000；currency 默认 CNY，**必须与生效账户币种一致**（422）。
+Entry：`{id,occurred_on,kind,amount_cents,currency,book_id,account_id,from_account_id,to_account_id,category_id,payee_id,note,expense_id,created_at}`。occurred_on 必填且**不得晚于用户时区的今天**（422）；amount_cents 1–100,000,000；currency 默认 CNY，**必须与生效账户币种一致**（422）。`book_id` 可空，指向本人账本，非本人或不存在的账本 422（「账本不存在」）。
 
 三种 kind 的字段组合由模型校验强制：`income`/`expense` 必须给 `account_id`、不得带 from/to；`transfer` 必须同时给 `from_account_id` 与 `to_account_id`，两者不得相同，且不得带 account/category/payee。transfer 的转出与转入账户币种必须一致。分类的 kind 必须与流水 kind 相同；账户、分类、商户都必须属于当前用户，否则 422。`expense_id` 只读，指向自动生成该流水的账单（手工录入为 null）；账单删除时置 null 而不是连带删除流水。
 
-列表支持 `from`/`to`（默认截至用户时区今天）、`kind`、`account_id`、`category_id`、`payee_id` 过滤，并按 `occurred_on`、`id` 倒序。为避免一次请求倾倒整本旧账，默认只返回最近 12 个月窗口且 `limit` 默认 500、上限 2000。`account_id` 过滤把转账的两侧都算作该账户的活动，但转账永远不计入收支。
+列表支持 `from`/`to`（默认截至用户时区今天）、`kind`、`account_id`、`category_id`、`payee_id`、`book_id` 过滤，并按 `occurred_on`、`id` 倒序。为避免一次请求倾倒整本旧账，默认只返回最近 12 个月窗口且 `limit` 默认 500、上限 2000。`account_id` 过滤把转账的两侧都算作该账户的活动，但转账永远不计入收支；`book_id` 只按标签收窄列表，不影响任何余额。
 
 流水按 `occurred_on` 归入月度统计，转账被排除在收入与支出之外；账户余额与报表都由流水派生，没有需要手工对账的存储余额。
 

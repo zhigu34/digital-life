@@ -7,7 +7,7 @@ import { categoryShares } from "./ledger";
 import AppIcon from "../../components/AppIcon.vue";
 import BarChart from "../../components/BarChart.vue";
 
-const props = defineProps<{ stats: Stats | null; month: string }>();
+const props = defineProps<{ stats: Stats | null; month: string; bookName: string }>();
 const tabs = computed(() => {
   const found = new Set<string>();
   for (const entry of props.stats?.months ?? []) {
@@ -43,7 +43,7 @@ const payees = computed(() => props.stats?.ledger.payees ?? []);
     <div v-if="tabs.length > 1" class="tabs" aria-label="币种筛选">
       <button v-for="item in tabs" :key="item" :class="{ active: item === activeCurrency }" @click="currency = item">{{ item }}</button>
     </div>
-    <p class="summary-note">报表只统计真实发生的流水（转账不计入收支），并始终按全部账户计算，不受流水页的筛选影响。</p>
+    <p class="summary-note">{{ bookName ? `当前只看「${bookName}」的流水（转账不计入收支）；账户余额仍是所有账本的合计。` : "报表只统计真实发生的流水（转账不计入收支），并始终按全部账户计算，不受流水页的账户筛选影响。" }}</p>
 
     <section class="report-summary">
       <div class="summary-card"><span>{{ fullMonthLabel(month) }} · 收入</span><strong>{{ money(monthIncome, activeCurrency) }}</strong><small>近 12 个月 {{ money(incomeTotal, activeCurrency) }}</small></div>
