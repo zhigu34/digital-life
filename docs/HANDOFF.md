@@ -32,6 +32,8 @@
 
 验证：后端 `pytest` 205 项通过（新增分组 CRUD/二级归属 404/409/422、导出导入往返与旧 `checkins` 导出兼容、被拒导入不改动现有数据、`0005 → 0011` 数据保全与 `0011 → 0010` 回退、一次性待办 `completed_on`、查询计数不随分组数增长），`ruff check` 与 `ruff format --check` 通过。前端 Vitest 65 项（`periods.test.ts` 17 项覆盖 ISO 跨年周、闰月、三态、连续、达标率分母）、`vue-tsc`、生产构建通过；**本地 Playwright 50 项（桌面 + 手机）全绿**，其中把原打卡用例改写成长期任务用例（建分组 → 今日总览一键打卡 → 撤销/重打 → 周期明细补记昨天 → 每周项"本周已完成 1 次" → 刷新持久化 → 账号隔离）。
 
+分支 CI [Actions #36242689911](https://github.com/zhigu34/digital-life/actions/runs/36242689911)（head `bdf385a`）与 main CI [36243228546](https://github.com/zhigu34/digital-life/actions/runs/36243228546) 的 backend / frontend / docker-e2e 三个 job 全部 success，按既有授权走快进合并。
+
 **本机没有 Docker**：容器构建与 `docker-e2e` 只能在 GitHub Actions 验证，本地结论不含 Docker/NAS 已验证。本轮同样**未执行 NAS 部署**，仍由用户运行 `git pull --ff-only && ./deploy`。这次带 Alembic `0011`，`deploy` 会在迁移前自动备份旧库；迁移会**删除 `checkins`/`checkin_logs` 两张表**并把数据搬进新表，建议部署后在真实数据上确认三件事：原来的打卡项都变成"单项目组 + 每天"且连续天数与累计次数和升级前一致、历史格子没有凭空多出漏做、一次性待办的完成日期为空（升级前没有这个信息）。
 
 ## 2026-09-26 记账支持多账本（`fb4e3d2`）
