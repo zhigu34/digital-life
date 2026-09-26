@@ -3,8 +3,11 @@ import {
   cellText,
   completionCount,
   currentSlot,
+  groupProgress,
+  groupStats,
   hitRate,
   isoWeekNumber,
+  lastActivityLabel,
   needsAttention,
   periodEnd,
   periodHeading,
@@ -15,7 +18,7 @@ import {
   streak,
   weekStart,
 } from "../src/features/tasks/periods";
-import type { GroupItem, RepeatUnit } from "../src/types";
+import type { GroupItem, RepeatUnit, TaskGroup } from "../src/types";
 
 function item(overrides: Partial<GroupItem> = {}): GroupItem {
   return {
@@ -234,5 +237,89 @@ describe("metrics", () => {
     expect(needsAttention(item({ repeat_unit: "week" }), today, "2026-09-20")).toBe(false);
     expect(periodStart(today, "month")).toBe("2026-09-01");
     expect(periodHeading("2026-09-01", "month", today)).toBe("本月 · 2026 年 9 月");
+  });
+});
+
+function group(overrides: Partial<TaskGroup> = {}): TaskGroup {
+  return {
+    id: 1,
+    title: "健身计划",
+    notes: "",
+    archived: false,
+    archived_on: null,
+    created_at: "2026-09-01T00:00:00",
+    items: [
+      item({
+        id: 1,
+        start_date: "2026-09-20",
+        recent_days: ["2026-09-24", "2026-09-26"],
+        total_count: 2,
+      }),
+      item({ id: 2, title: "力量训练", repeat_unit: "week", start_date: "2026-09-21" }),
+    ],
+    ...overrides,
+  };
+}
+
+describe("group summary", () => {
+  const today = "2026-09-26";
+
+  it("counts the items expected in the running period", () => {
+    // One daily item already done, one weekly item still waiting.
+    expect(groupProgress(group(), today)).toEqual({ satisfied: 1, expected: 2 });
+    const both = group({
+      items: [item({ recent_days: [today], total_count: 1 }), item({ id: 2, recent_days: [today] })],
+    });
+    expect(groupProgress(both, today)).toEqual({ satisfied: 2, expected: 2 });
+  });
+
+  it("measures the running time from the earliest known day", () => {
+    const stats = groupStats(group(), today);
+    // Earliest start date is 2026-09-20; 09-20 → 09-26 inclusive.
+    expect(stats.since).toBe("2026-09-20");
+    expect(stats.sustainedDays).toBe(7);
+    expect(stats.lastOn).toBe("2026-09-26");
+    expect(stats.daysSinceLast).toBe(0);
+    expect(lastActivityLabel(stats)).toBe("最近打卡：今天");
+  });
+
+  it("counts a backfilled completion that predates the start date", () => {
+    const backfilled = group({
+      items: [item({ start_date: "2026-09-24", recent_days: ["2026-09-20"], total_count: 1 })],
+    });
+    expect(groupStats(backfilled, today).since).toBe("2026-09-20");
+    expect(groupStats(backfilled, today).sustainedDays).toBe(7);
+  });
+
+  it("shows nothing yet for a fresh group and freezes when archived", () => {
+    const fresh = group({ items: [item({ start_date: today, recent_days: [] })] });
+    expect(groupStats(fresh, today).sustainedDays).toBe(1);
+    expect(lastActivityLabel(groupStats(fresh, today))).toBe("还没有打卡");
+    expect(groupStats(fresh, today).daysSinceLast).toBeNull();
+
+    // An archived group stops counting on its archiving day.
+    const closed = group({
+      items: [item({ start_date: "2026-09-01" })],
+      archived: true,
+      archived_on: "2026-09-10",
+    });
+    expect(groupStats(closed, today).sustainedDays).toBe(10);
+  });
+
+  it("summarises totals and how long ago the last tap was", () => {
+    const stats = groupStats(group({ items: [item({ recent_days: ["2026-09-23"], total_count: 41 })] }), today);
+    expect(stats.totalCount).toBe(41);
+    expect(lastActivityLabel(stats)).toBe("最近打卡：3 天前");
+    const yesterday = group({ items: [item({ recent_days: ["2026-09-25"], total_count: 1 })] });
+    expect(lastActivityLabel(groupStats(yesterday, today))).toBe("最近打卡：昨天");
+  });
+
+  it("ignores items that never started", () => {
+    const stats = groupStats(group({ items: [item({ start_date: "2026-10-01" })] }), today);
+    expect(stats.sustainedDays).toBe(0);
+    expect(groupProgress(group({ items: [item({ start_date: "2026-10-01" })] }), today)).toEqual({
+      satisfied: 0,
+      expected: 0,
+    });
   });
 });

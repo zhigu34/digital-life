@@ -13,6 +13,7 @@ from app.groups.schemas import (
     CompletionPayload,
     CompletionView,
     GroupCreate,
+    GroupLogView,
     GroupPatch,
     GroupView,
     ItemPatch,
@@ -22,6 +23,7 @@ from app.groups.schemas import (
 from app.groups.service import (
     completion_view,
     completions_between,
+    group_log,
     group_view,
     groups_view,
     item_response,
@@ -239,3 +241,14 @@ def item_completions(
     item = owned_item(db, group, item_id)
     validate_span(start, end)
     return [completion_view(row) for row in completions_between(db, item, start, end)]
+
+
+@router.get("/{group_id}/log", response_model=list[GroupLogView])
+def group_log_entries(
+    group_id: ResourceId,
+    limit: int = Query(20, ge=1, le=50),
+    identity: Identity = Depends(authenticated),
+    db: Session = Depends(get_db),
+):
+    group = owned_group(db, group_id, identity.user.id)
+    return group_log(db, group, limit)

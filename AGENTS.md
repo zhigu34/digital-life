@@ -32,7 +32,9 @@
 - `frontend/src/features/shows/`：追剧域独立边界（`ShowsView`/`ShowCard`/`ShowForm`/`api.ts`/`domain.ts`/`useShows.ts`/`shows.css`），自行加载并在变更后只刷新自己，向 App 回传快照。
 - `frontend/src/features/bookmarks/`：书签域独立边界（`BookmarksView`/`BookmarkForm`/`api.ts`/`bookmarks.ts` 纯派生/`useBookmarks.ts`/`bookmarks.css`）。自行加载、自持状态，**不回传 App 快照**（页面键 `bookmarks` 带 `:key="user.id"`，切换账号自动重建），因此不在今日概览展示。
 - `frontend/src/features/ledger/`：记账域独立边界（`LedgerView` 四分区 + `EntryList`/`EntryForm`/`BillPanel`/`AccountPanel`/`CategoryPanel`/`PayeePanel`/`ReportPanel`/`api.ts`/`useLedger.ts`/`ledger.ts` 纯派生/`ledger.css`）。账单仍由 App 的 `records.expenses` 持有，记账域通过 `sync` 回传，不触发全局 `load()`。
-- `frontend/src/features/tasks/`：任务域独立边界（`TasksView`/`TaskCard`（一次性待办）/`GroupCard`（长期任务分组）/`GroupForm`/`ItemForm`/`HistoryDialog`/`api.ts`/`useGroups.ts`/`periods.ts` 纯派生/`tasks.css`）。一次性待办的增删改仍由 App 的 `records.tasks` 与 `RecordForm` 负责，长期任务自持数据并向 App 回传快照供今日概览使用；今日概览通过 `create-request`/`check-request` 两个请求属性驱动本页打开表单或直接打卡，不复制一份状态。
+- `frontend/src/features/tasks/`：任务域独立边界（`TasksView`/`TaskCard`（一次性待办）/`GroupCard`（长期任务分组，默认折叠）/`GroupForm`/`ItemForm`/`HistoryDialog`/`api.ts`/`useGroups.ts`/`collapse.ts` 折叠偏好/`periods.ts` 纯派生/`tasks.css`）。一次性待办的增删改仍由 App 的 `records.tasks` 与 `RecordForm` 负责，长期任务自持数据并向 App 回传快照供今日概览使用；今日概览通过 `create-request`/`check-request` 两个请求属性驱动本页打开表单或直接打卡，不复制一份状态。
+  - 折叠偏好按**账号**存在 `localStorage`（键 `digital-life:collapsed-groups:<userId>`，默认折叠；页面本身按 `user.id` 重建，但浏览器存储会跨账号，所以必须分键）。读写成对失败都静默降级（隐私模式/配额/损坏 JSON 不能让页面崩），纯函数在 `collapse.ts` 里、有用例覆盖。
+  - 分组的**执行日志**用 `GET /api/groups/{id}/log` 按需拉取，只在卡片展开时请求、变更后作废重取；`GET /api/groups` 绝不带日志，否则响应会随打卡次数增长。折叠态也照常显示每项的实时状态与「刚刚更新」提示，收起不等于看不到进展。
 - `frontend/src/views/`、`components/`：其余页面与共享交互组件。
 - `frontend/src/views/MaintenanceView.vue`：周期维护配置、完成与历史修正；日期由后端派生。
 - `frontend/src/domain.ts`：时区、日期、周年与账单月均/应付计算；`api.ts`：Cookie/CSRF API 客户端。
@@ -111,6 +113,7 @@ E2E 会创建多个测试账号和生活记录；只对独立测试环境运行�
 - 长期任务 / 周期维护 / 在做三者语义不同，不能互相替代：长期任务**不推进任何日期**，周期（每天 / 本周内完成 / 本月内完成）是固定格子，"这一周没做"永远留着；周期维护按实际完成日顺延；在做没有周期概念。一次性待办与长期任务是两种形态，**不可互相转换**（`tasks` 表没有 `kind` 与周期字段，混入即 422）。
 - 一次性的 `tasks.completed_on` 与长期任务的 `task_completions` 都由服务端派生/校验：前者只在 `status` 变成 `done` 的那一刻写入（编辑已完成的待办不会把完成日期改成今天），后者不接受晚于用户时区今天的日期（422）、同日重复 409。
 - 长期任务的达标口径（周期内至少一次完成）由前端 `features/tasks/periods.ts` 从完成日期派生，服务端只回原始事实。**记录过的完成日期是事实**：即使补记在 `start_date` 之前也要显示为已达标并计入连续；`start_date` 与 `archived_on` 只决定"空周期算不算漏做"。
+- 「耗时统计」也是纯派生、不落库：已坚持 = 从最早一次打卡（没有记录时用最早的开始日期）到今天，归档分组冻结在归档日；最近打卡按完成日期算到今天的差值。不要为它新增字段，也不要把它和「周期达标」混成一个数。
 - 集数上限 1,000,000，资源 ID 限制在 SQLite 整数范围，避免通过输入校验后发生数据库溢出。
 
 ## 数据库、部署和恢复

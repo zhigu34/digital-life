@@ -9,6 +9,7 @@ import HistoryDialog from "./HistoryDialog.vue";
 import ItemForm from "./ItemForm.vue";
 import TaskCard from "./TaskCard.vue";
 import { useGroups } from "./useGroups";
+import { isCollapsed } from "./collapse";
 import type { GroupPayload } from "./api";
 import "./tasks.css";
 
@@ -16,6 +17,8 @@ const props = defineProps<{
   tasks: Task[];
   today: string;
   busy: boolean;
+  /** Collapse preferences are stored per account. */
+  userId: number;
   /** Bumped by the shell when the today overview asks for a form. */
   createRequest: { kind: "todo" | "group"; nonce: number } | null;
   /** Bumped by the today overview to check an item without leaving the page. */
@@ -31,9 +34,12 @@ const emit = defineEmits<{
   removeTask: [task: Task];
 }>();
 
-const store = useGroups((rows) => emit("sync", rows));
+const store = useGroups((rows) => emit("sync", rows), props.userId);
 const { groups, loading, error } = store;
 const working = computed(() => props.busy || store.busy.value);
+/** Ids whose summary just changed while collapsed, for the short-lived pulse. */
+const pulses = ref<Record<number, boolean>>({});
+const PULSE_MS = 2600;
 const filter = ref<"all" | "once" | "group" | "done">("all");
 const search = ref("");
 const creating = ref(false);
@@ -81,6 +87,55 @@ function groupOf(item: GroupItem): TaskGroup | undefined {
   return groups.value.find((group) => group.items.some((row) => row.id === item.id));
 }
 
+function collapsedOf(group: TaskGroup): boolean {
+  return isCollapsed(store.collapsed.value, group.id);
+}
+// A mixed state is neither: each bulk button is only disabled when its own
+// direction is already fully applied.
+const allCollapsed = computed(
+  () => visibleGroups.value.length > 0 && visibleGroups.value.every(collapsedOf),
+);
+const allExpanded = computed(
+  () => visibleGroups.value.length > 0 && visibleGroups.value.every((group) => !collapsedOf(group)),
+);
+
+function pulse(groupId: number) {
+  pulses.value[groupId] = true;
+  window.setTimeout(() => {
+    pulses.value[groupId] = false;
+  }, PULSE_MS);
+}
+
+/**
+ * One hook for every mutation: flash the collapsed summary, and reload the log
+ * for a card that is open. Collapsed cards stay untouched — they fetch the log
+ * again the next time they are expanded.
+ */
+function afterChange(groupId: number) {
+  pulse(groupId);
+  if (!isCollapsed(store.collapsed.value, groupId)) void store.loadLog(groupId);
+}
+
+async function toggleCollapse(group: TaskGroup) {
+  const next = !collapsedOf(group);
+  store.setCollapsed(group.id, next);
+  if (!next) {
+    try {
+      await store.loadLog(group.id);
+    } catch (e) {
+      emit("error", e);
+    }
+  }
+}
+
+function setAllCollapsed(collapsed: boolean) {
+  const ids = visibleGroups.value.map((group) => group.id);
+  store.setAllCollapsed(ids, collapsed);
+  if (!collapsed) {
+    for (const id of ids) void store.loadLog(id).catch((e) => emit("error", e));
+  }
+}
+
 async function toggle(item: GroupItem) {
   const group = groupOf(item);
   if (!group) return;
@@ -93,6 +148,7 @@ async function toggle(item: GroupItem) {
       await store.check(group.id, item.id);
       emit("notice", `已打卡：${item.title}`);
     }
+    afterChange(group.id);
   } catch (e) {
     emit("error", e);
   }
@@ -111,12 +167,18 @@ async function saveGroup(payload: Record<string, unknown>) {
   try {
     if (editingGroup.value) {
       await store.update(editingGroup.value.id, payload);
+      afterChange(editingGroup.value.id);
       editingGroup.value = null;
       emit("notice", "长期任务已更新");
       return;
     }
-    await store.add(payload as unknown as GroupPayload);
+    const created = await store.add(payload as unknown as GroupPayload);
     creating.value = false;
+    // A group the user just wrote is one they want to look at.
+    if (created) {
+      store.setCollapsed(created.id, false);
+      void store.loadLog(created.id);
+    }
     emit("notice", "长期任务已添加");
   } catch (e) {
     formError.value = e instanceof Error ? e.message : "保存失败";
@@ -151,6 +213,7 @@ async function checkInPeriod(payload: { on: string; note: string }) {
   if (!target) return;
   try {
     await store.check(target.groupId, target.itemId, payload);
+    afterChange(target.groupId);
     emit("notice", "已记录这次打卡");
   } catch (e) {
     emit("error", e);
@@ -162,6 +225,7 @@ async function undoInPeriod(on: string) {
   if (!target) return;
   try {
     await store.undo(target.groupId, target.itemId, on);
+    afterChange(target.groupId);
     emit("notice", "已删除该天记录");
   } catch (e) {
     emit("error", e);
@@ -187,6 +251,7 @@ async function saveItem(payload: Record<string, unknown>) {
     };
     if (target.item) await store.saveItem(target.group.id, target.item.id, values);
     else await store.addItem(target.group.id, values as { title: string; repeat_unit: "day" });
+    afterChange(target.group.id);
     editingItem.value = null;
     emit("notice", target.item ? "打卡项已更新" : "打卡项已添加");
   } catch (e) {
@@ -208,6 +273,7 @@ async function removeGroup(group: TaskGroup) {
 async function removeItem(group: TaskGroup, item: GroupItem) {
   try {
     await store.removeItem(group.id, item.id);
+    afterChange(group.id);
     detail.value = null;
     emit("notice", "打卡项已删除");
   } catch (e) {
@@ -222,6 +288,7 @@ async function toggleArchive(group: TaskGroup) {
   if (!window.confirm(question)) return;
   try {
     await store.update(group.id, { archived: !group.archived });
+    afterChange(group.id);
     emit("notice", group.archived ? "已恢复长期任务" : "已归档长期任务");
   } catch (e) {
     emit("error", e);
@@ -231,6 +298,7 @@ async function toggleArchive(group: TaskGroup) {
 async function checkFromRequest(groupId: number, itemId: number) {
   try {
     await store.check(groupId, itemId);
+    afterChange(groupId);
     emit("notice", "已打卡");
   } catch (e) {
     emit("error", e);
@@ -297,6 +365,14 @@ watch(
       <span class="muted small">
         {{ tasks.length - doneCount }} 件待办 · {{ groups.length }} 个长期任务
       </span>
+      <div v-if="visibleGroups.length > 1" class="collapse-actions">
+        <button class="text-button" :disabled="working || allCollapsed" @click="setAllCollapsed(true)">
+          全部折叠
+        </button>
+        <button class="text-button" :disabled="working || allExpanded" @click="setAllCollapsed(false)">
+          全部展开
+        </button>
+      </div>
       <label class="search-box"
         ><AppIcon name="search" :size="17" /><input
           v-model="search"
@@ -337,7 +413,12 @@ watch(
         :group="group"
         :today="today"
         :busy="working"
+        :collapsed="collapsedOf(group)"
+        :log="store.logs.value[group.id] ?? []"
+        :log-loading="!!store.logLoading.value[group.id]"
+        :just-changed="!!pulses[group.id]"
         @toggle="toggle"
+        @toggle-collapse="toggleCollapse(group)"
         @open="(item) => openHistory(group, item)"
         @add-item="openItemForm(group)"
         @edit="openGroupForm(group)"

@@ -33,6 +33,43 @@ def create_group(client, headers, title="健身计划", items=None):
     )
 
 
+def test_group_log_lists_recent_completions_with_item_titles(accounts):
+    _, _, _, alice, headers, bob, bob_headers = accounts
+    group = create_group(alice, headers).json()
+    running, strength = group["items"]
+    alice.post(
+        f"/api/groups/{group['id']}/items/{running['id']}/complete",
+        headers=headers,
+        json={"on": "2026-09-24", "note": "慢跑"},
+    )
+    alice.post(
+        f"/api/groups/{group['id']}/items/{strength['id']}/complete",
+        headers=headers,
+        json={"on": "2026-09-26"},
+    )
+    alice.post(
+        f"/api/groups/{group['id']}/items/{running['id']}/complete",
+        headers=headers,
+        json={"on": "2026-09-26"},
+    )
+
+    log = alice.get(f"/api/groups/{group['id']}/log", headers=headers)
+    assert log.status_code == 200, log.text
+    rows = log.json()
+    # Newest first, across every item of the group.
+    assert [row["completed_on"] for row in rows] == ["2026-09-26", "2026-09-26", "2026-09-24"]
+    assert {row["item_title"] for row in rows} == {"跑步 30 分钟", "力量训练"}
+    assert rows[2]["note"] == "慢跑"
+    assert all(row["item_id"] in {running["id"], strength["id"]} for row in rows)
+
+    assert len(alice.get(f"/api/groups/{group['id']}/log?limit=1", headers=headers).json()) == 1
+    oversized = alice.get(f"/api/groups/{group['id']}/log?limit=51", headers=headers)
+    assert oversized.status_code == 422
+    # Ownership: another account cannot read the log of a group it does not own.
+    assert bob.get(f"/api/groups/{group['id']}/log", headers=bob_headers).status_code == 404
+    assert bob.get("/api/groups/9999/log", headers=bob_headers).status_code == 404
+
+
 def test_group_items_and_completion_periods(accounts):
     _, _, _, alice, headers, bob, bob_headers = accounts
     assert (

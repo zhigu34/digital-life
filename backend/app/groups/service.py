@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.groups.schemas import CompletionView, GroupView, ItemView
+from app.groups.schemas import CompletionView, GroupLogView, GroupView, ItemView
 from app.models import TaskCompletion, TaskGroup, TaskGroupItem
 
 # Same window the check-in list used: enough history for streaks and grids while
@@ -137,6 +137,32 @@ def completions_between(
 
 def completion_view(row: TaskCompletion) -> CompletionView:
     return CompletionView.model_validate(row)
+
+
+def group_log(db: Session, group: TaskGroup, limit: int) -> list[GroupLogView]:
+    """Newest completions across every item of one group.
+
+    Loaded on demand (the UI pulls it when a card is expanded), so the list
+    endpoint never carries a growing log for every group.
+    """
+    rows = db.execute(
+        select(TaskCompletion, TaskGroupItem.title)
+        .join(TaskGroupItem, TaskGroupItem.id == TaskCompletion.item_id)
+        .where(TaskGroupItem.group_id == group.id)
+        .order_by(TaskCompletion.completed_on.desc(), TaskCompletion.id.desc())
+        .limit(limit)
+    ).all()
+    return [
+        GroupLogView(
+            id=row.id,
+            item_id=row.item_id,
+            item_title=title,
+            completed_on=row.completed_on,
+            note=row.note,
+            created_at=row.created_at,
+        )
+        for row, title in rows
+    ]
 
 
 def export_groups(db: Session, user_id: int) -> dict:

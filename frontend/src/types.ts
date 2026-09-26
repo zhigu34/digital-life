@@ -56,6 +56,11 @@ export interface TaskCompletion {
   note: string;
   created_at: string;
 }
+
+/** One line of a group's activity log: a completion plus the item it belongs to. */
+export interface GroupLogEntry extends TaskCompletion {
+  item_title: string;
+}
 export interface Expense {
   id: number;
   title: string;

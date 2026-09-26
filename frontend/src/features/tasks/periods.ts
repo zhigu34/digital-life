@@ -1,4 +1,4 @@
-import type { GroupItem, RepeatUnit } from "../../types";
+import type { GroupItem, RepeatUnit, TaskGroup } from "../../types";
 
 /**
  * Period maths for long-term tasks. Nothing here talks to the network and
@@ -253,4 +253,73 @@ export function streakUnit(unit: RepeatUnit): string {
 export function repeatLabel(unit: RepeatUnit): string {
   if (unit === "day") return "每天";
   return unit === "week" ? "本周内完成" : "本月内完成";
+}
+
+/** How many items owe work in the period running now, and how many delivered. */
+export function groupProgress(
+  group: TaskGroup,
+  today: string,
+): { satisfied: number; expected: number } {
+  let satisfied = 0;
+  let expected = 0;
+  for (const item of group.items) {
+    const state = currentSlot(item, today, group.archived_on).state;
+    if (state === "done") satisfied += 1;
+    if (state !== "before") expected += 1;
+  }
+  return { satisfied, expected };
+}
+
+export interface GroupStats {
+  /** Earliest known day: the first completion, or the earliest start date. */
+  since: string | null;
+  sustainedDays: number;
+  lastOn: string | null;
+  daysSinceLast: number | null;
+  totalCount: number;
+  satisfied: number;
+  expected: number;
+}
+
+function daysBetween(from: string, to: string): number {
+  return Math.round(
+    (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000,
+  );
+}
+
+/**
+ * The time dimension of a group: how long it has been running, when it was last
+ * touched, and how much has been recorded. Derived from completion dates only —
+ * nothing extra is stored for it.
+ *
+ * An archived group stops counting on its archiving day, so a finished group
+ * keeps a frozen "已坚持" figure instead of growing forever.
+ */
+export function groupStats(group: TaskGroup, today: string): GroupStats {
+  const lastOn = group.items
+    .flatMap((item) => item.recent_days)
+    .reduce<string | null>((latest, day) => (!latest || day > latest ? day : latest), null);
+  const starts = group.items.map((item) => item.start_date);
+  const candidates = lastOn ? [...starts, lastOn] : starts;
+  const since = candidates.length ? candidates.reduce((a, b) => (a < b ? a : b)) : null;
+  const until = group.archived_on && group.archived_on < today ? group.archived_on : today;
+  const sustainedDays = since && since <= until ? daysBetween(since, until) + 1 : 0;
+  const progress = groupProgress(group, today);
+  return {
+    since,
+    sustainedDays,
+    lastOn,
+    daysSinceLast: lastOn ? daysBetween(lastOn, today) : null,
+    totalCount: group.items.reduce((sum, item) => sum + item.total_count, 0),
+    satisfied: progress.satisfied,
+    expected: progress.expected,
+  };
+}
+
+/** "今天 / 昨天 / 3 天前 / 还没有" — the collapsed row shows this live. */
+export function lastActivityLabel(stats: GroupStats): string {
+  if (!stats.lastOn || stats.daysSinceLast === null) return "还没有打卡";
+  if (stats.daysSinceLast <= 0) return "最近打卡：今天";
+  if (stats.daysSinceLast === 1) return "最近打卡：昨天";
+  return `最近打卡：${stats.daysSinceLast} 天前`;
 }

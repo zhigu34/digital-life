@@ -79,3 +79,9 @@ class CompletionView(BaseModel):
     completed_on: date
     note: str
     created_at: datetime
+
+
+class GroupLogView(CompletionView):
+    """A completion plus the item it belongs to, for the group's activity log."""
+
+    item_title: str

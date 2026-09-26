@@ -68,6 +68,16 @@ async function saveBill(page: Page) {
   await page.getByRole('dialog').getByRole('button', { name: '保存账单', exact: true }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
 }
+/** A long-term task is a group with one item here; returns its card. */
+async function addLongTask(page: Page, title: string, item: string) {
+  await page.getByRole('button', { name: '添加长期任务', exact: true }).first().click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByLabel('分组名称', { exact: true }).fill(title)
+  await dialog.getByLabel('打卡项', { exact: true }).fill(item)
+  await dialog.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  return page.locator('article').filter({ hasText: title })
+}
 
 test('task lifecycle, profile and layout work on each device', async ({ page }, testInfo) => {
   await login(page, await account())
@@ -477,6 +487,61 @@ test('long-term tasks check in by period and stay private', async ({ page }, tes
   await navigate(page, '任务')
   await expect(page.getByText('健身计划', { exact: true })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: '从一件小事开始', exact: true })).toBeVisible()
+})
+
+test('long-term groups collapse, keep the summary live and remember the choice', async ({ page }) => {
+  const alice = await account(), bob = await account()
+  await login(page, alice)
+  await navigate(page, '任务')
+  const fitness = await addLongTask(page, '健身计划', '跑步 30 分钟')
+  const study = await addLongTask(page, '读书 · 学习', '写周记')
+  // The group just written opens itself: detail is there straight away.
+  await expect(page.locator('.group-stats')).toHaveCount(2)
+  await expect(page.locator('.period-grid')).toHaveCount(2)
+
+  // Bulk collapse drops every detail but keeps a live summary.
+  await page.getByRole('button', { name: '全部折叠', exact: true }).click()
+  await expect(page.locator('.group-card.collapsed')).toHaveCount(2)
+  await expect(page.locator('.period-grid')).toHaveCount(0)
+  await expect(page.locator('.group-stats')).toHaveCount(0)
+  await expect(fitness).toContainText('本期 0/1 项达标')
+  await expect(fitness).toContainText('还差 1 项：跑步 30 分钟')
+  await expect(fitness).toContainText('还没有打卡')
+
+  // Checking in while collapsed keeps the summary reporting progress.
+  await fitness.getByRole('button', { name: '打卡 跑步 30 分钟', exact: true }).click()
+  await expect(fitness).toContainText('本期 1/1 项达标')
+  await expect(fitness).toContainText('本期都已完成')
+  await expect(fitness).toContainText('最近打卡：今天')
+  await expect(fitness).toContainText('刚刚更新')
+
+  // Expanding one card reveals progress, time spent and the activity log.
+  await page.getByRole('button', { name: '展开 健身计划', exact: true }).click()
+  await expect(fitness.locator('.period-grid')).toHaveCount(1)
+  await expect(fitness).toContainText('已坚持')
+  await expect(fitness).toContainText('累计打卡')
+  await expect(fitness).toContainText('执行日志')
+  await expect(fitness.locator('.checkin-log-row')).toHaveCount(1)
+  await expect(study.locator('.period-grid')).toHaveCount(0)
+  await expect(study).toContainText('还差 1 项')
+
+  // The choice is remembered per account, across a reload.
+  await page.reload()
+  await navigate(page, '任务')
+  await expect(page.locator('.group-card.collapsed')).toHaveCount(1)
+  await expect(fitness.locator('.period-grid')).toHaveCount(1)
+  await expect(page.getByRole('button', { name: '展开 读书 · 学习', exact: true })).toBeVisible()
+
+  // And the bulk action opens everything again.
+  await page.getByRole('button', { name: '全部展开', exact: true }).click()
+  await expect(page.locator('.period-grid')).toHaveCount(2)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false)
+
+  await navigate(page, '个人设置')
+  await page.getByRole('button', { name: '退出登录', exact: true }).filter({ visible: true }).first().click()
+  await login(page, bob)
+  await navigate(page, '任务')
+  await expect(page.getByText('健身计划', { exact: true })).toHaveCount(0)
 })
 
 test('projects track ongoing work through the more sheet', async ({ page }, testInfo) => {

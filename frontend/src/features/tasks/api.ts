@@ -1,5 +1,11 @@
 import { api } from "../../api";
-import type { GroupItem, RepeatUnit, TaskCompletion, TaskGroup } from "../../types";
+import type {
+  GroupItem,
+  GroupLogEntry,
+  RepeatUnit,
+  TaskCompletion,
+  TaskGroup,
+} from "../../types";
 
 export interface ItemPayload {
   title: string;
@@ -45,3 +51,7 @@ export const listCompletions = (groupId: number, itemId: number, start: string, 
   api<TaskCompletion[]>(
     `/groups/${groupId}/items/${itemId}/completions?start=${start}&end=${end}`,
   );
+
+/** The group's activity log, newest first; fetched only when a card is expanded. */
+export const groupLog = (groupId: number, limit = 20) =>
+  api<GroupLogEntry[]>(`/groups/${groupId}/log?limit=${limit}`);

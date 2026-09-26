@@ -68,6 +68,7 @@ Backend CLI via `python -m app.cli`: `migrate`, `create-admin --username USER` (
 - `GET/POST /api/groups`、`GET/PATCH/DELETE /api/groups/{id}`。TaskGroup：`{id,title,notes,archived,archived_on,created_at,items:[ItemView]}`，title 1–120、notes ≤4000，创建时 `items` 至少一条（最多 50）。PATCH 只改 `title/notes/archived`；`archived=true` 时服务端写 `archived_on=用户时区今天`（恢复归档则清空），`archived_on` 是"是否还期待新周期"的唯一依据。
 - `POST /api/groups/{gid}/items`、`PATCH/DELETE /api/groups/{gid}/items/{iid}`。ItemPayload：`{title(1–120), repeat_unit:'day'|'week'|'month', start_date?}`，`start_date` 缺省为用户时区今天，早于它的周期不会被算成漏做。ItemView 额外含 `recent_days`（最近 400 天完成日期，升序）与 `total_count`（全量计数）。
 - `POST /api/groups/{gid}/items/{iid}/complete` 接收 `{on?,note?}`，缺省为用户时区今天；未来日期 422、同日重复 409（`UNIQUE(item_id, completed_on)`）、分组已归档 400，201 返回更新后的项。`DELETE .../complete/{on}` 撤销某天（无记录 404）。`GET .../completions?start=&end=` 返回该区间的完成明细（按日期倒序），跨度上限 366 天，越界/倒置 422。
+- `GET /api/groups/{gid}/log?limit=1..50`（默认 20）返回**整个分组**的最近完成记录，按完成日期与 ID 倒序，每行含 `{id,item_id,item_title,completed_on,note,created_at}`。这就是界面展开卡片时的「执行日志」：按需拉取，列表接口不带它，所以 `GET /api/groups` 的响应不会随打卡次数增长。归属同其他分组端点（他人的分组 404）。
 - 归属一律由会话决定：别人的分组 404；项只能通过自己的分组解析，分组与项不匹配同样 404。删除分组级联删除项与完成记录，删除项级联删除自己的记录。
 - 列表接口用固定条数查询（分组 → 项 → 完成窗口 → 计数），不随分组或项的数量增长。
 - 导出为 `task_groups`、`task_group_items`、`task_completions`（均为扁平数组，靠 `id` 互相引用）。导入要求项必须指向文件内的分组、分组至少一项、同项同日不重复，任一条不合法整体 422 且不改动现有数据。**旧导出的 `checkins` + `checkin_logs` 仍被接受**：`kind='daily'` 的项转成一个分组 + 一个 `repeat_unit='day'` 的打卡项（`start_date` 取最早完成日，避免历史凭空多出漏做），`kind='ongoing'` 依旧转成在做项目。
