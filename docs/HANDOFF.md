@@ -1,5 +1,32 @@
 # Digital Life 接手状态
 
+## 2026-09-26 记账支持多账本（`fb4e3d2`）
+
+用户要求「记账添加多账本功能，这样可以为专项账目进行记录」。先用一张可点的界面样稿和一张 A/B 对比图把做法说清（题目是「账本该挂在哪里」），用户确认三个取舍后开工，分支 `codex/ledger-books`：
+
+1. **层级 = 挂在流水与账单上**，不是挂在账户上：`ledger_entries` 与 `expenses` 各加可空 `book_id`，账户/分类/商户仍全局共享。这样余额仍是账户维度的一个派生数，切账本永远不改变任何余额；反过来若按账户分账本，同一张卡的钱会被切成两半，与「余额一律由流水派生」这条既有铁律冲突。
+2. **本轮不做预算额度**，只归类统计（额度与超支提醒留到下一批）。
+3. **字典全局共享**，分类与商户不按账本隔离。
+
+后端：
+- 迁移 `0010` 新建 `ledger_books`（`user_id + name` 唯一）并给两列加可空 `book_id`；**SQLite 不能 `ADD COLUMN` 带外键**，故两列不写 REFERENCES，归属由端点守（沿用 `0008` 的先例，删除被引用的账本返回 409 而不级联）。迁移为每个已有账号补建默认账本「日常」并把历史账单与流水归入 —— 否则升级后旧数据会读成「未归类」，看起来像丢了数据。
+- `app/ledger` 增 `BookPayload` / `BookView` / `BookPatch`、账本 CRUD、`owned_book` / `book_in_use` 与 `ensure_default_book`（取 `sort_order` 最小者，没有则播种「日常」；`IntegrityError` 时回选，处理并发）。重名 409、被引用时删除 409（提示改用归档）、`book_id` 非本人 422。
+- `/api/stats` 增可选 `book_id`，把 `expense_due` 与 `ledger_income`/`ledger_expense` 两路口径同时收窄；`maintenance_cost` 与 `shows` 不受影响（维护与追剧不属账本维度）。`/expenses/{id}/pay` 生成的流水沿用账单自身的账本标签（请求体可覆盖），仍在推进 `next_due` **之前**校验。
+- 导出/导入补 `ledger_books`（id 全量重映射）。**导入里踩到一个真 bug**：旧版导出没有账本键，于是调 `ensure_default_book()` 补建 —— 而它会 `commit()`，DELETE 已执行、事务被提前提交，结果是**一次被拒的导入把调用方的记账数据清空了**（由 `test_import_rejects_dangling_ledger_references` 失败暴露）。改为在同一事务内 `LedgerBook(...)` + `db.flush()` 播种，并补了专门的回归用例 `test_a_rejected_pre_books_import_leaves_the_ledger_untouched`。
+- CLI `SCHEMA_REVISION` 与四处测试里写死的版本断言一并升到 `0010`。
+
+前端：
+- 记账页顶部新增 `.ledger-book-bar` 账本切换器（含说明文案与「清除」），「管理」区最前面新增 `BookPanel` 账本面板；`EntryForm` / `BillPanel` 都能选账本（默认落在当前筛选的账本，否则第一个），流水列表在未筛选时给每行加账本标签。
+- 选中账本时统计卡片改取 `/api/stats?book_id=`，与列表、报表口径一致；切账本会同时清掉账户筛选（两个筛选叠在一起会读成「没有数据」）；删掉正在筛选的账本会自动回到「全部账本」。
+
+验证：后端 `pytest` 198 项通过（新增账本 CRUD / 越权 / 409 / 过滤、`/stats` 分账本、导入往返与旧导出兼容共 15 项），`ruff check` 与 `ruff format --check` 通过（顺手补掉 `tests/test_bookmarks.py` 遗留的格式漂移）。前端 Vitest 53 项、`vue-tsc` 类型检查、生产构建通过；**本地 Playwright 50 项（桌面 + 手机）全绿**，其中账本新增 2 条用例（建账本 → 归集流水 → 切筛选；被引用的账本只能归档不能删）。
+
+本地 E2E 又抓到两个单测与类型检查都抓不到的问题：① 账本切换行在分区 tab **之上**，切了账本仍停在「管理」区，用例误以为会跳回「流水」；② 409 之后 `.global-error` 横幅不会自动消失，把后续用例「无全局错误」的前置检查卡住 —— 已改为显式点击「关闭错误提示」。另外 `vue-tsc` 抓到一个真实遗漏：`book_id` 只加进了 `LedgerBook`，忘了给 `Expense` / `LedgerEntry` 补字段（运行时只会是 `undefined`，静默）。
+
+分支 CI [Actions #36236149708](https://github.com/zhigu34/digital-life/actions/runs/36236149708)（head `fb4e3d2`）与 main CI `36236546453` 的 backend / frontend / docker-e2e 三个 job 全部 success（本机 GitHub connector 无创建 PR 权限，403，故按既有授权走快进合并）。
+
+本轮**未执行 NAS 部署**，仍由用户在合入后运行 `git pull --ff-only && ./deploy`。这次带 Alembic `0010`，`deploy` 会在迁移前自动备份旧库；`ledger_books` 是新增表、两列是纯可空列，不重建表。部署后建议在真实数据上确认三件事：旧账单与流水都落在「日常」账本下、各账户余额与升级前完全一致、切到「全部账本」时月度统计与以前相同。
+
 ## 2026-09-25 记账页筛选行折行 / 下拉空白 / 卡片右缘不对齐（`97fdacf`）
 
 用户贴截图说「记账样式有点问题，有些没对齐，字段转行」。先把截图当测量数据用：原图 2808×1222（2× Retina）→ 反推视口 1404 CSS、页面内容宽 1282，对上 `.page{max-width:1370;padding:0 44px}`，于是本地用 1920 视口 1:1 复现，几何完全吻合。三处根因（都有浏览器实测数据），分支 `codex/ledger-layout-fix`：
@@ -103,7 +130,7 @@
 
 ## 接下来
 
-1. **本轮待用户执行**：NAS 上 `git pull --ff-only && ./deploy` 部署书签模块（提交 `87e4c6b`，含 Alembic `0009`，CLI 恢复版本同步升至 `0009`），顺带部署此前待上线的记账模块、深色主题修复与记账页样式修复（`10cf8fe`，含 Alembic `0008`）。部署前会自动备份旧库；`bookmarks` 是新增表，不影响既有记录。书签页面状态独立，不在今日概览展示，入口在侧栏底部与移动端「更多」抽屉。部署后建议硬刷新（`Cmd/Ctrl + Shift + R`）丢掉旧 CSS 缓存，并在真实数据上确认三件事：深色下卡片之间留白不再是米白、切换主题后刷新首帧即深色；旧「固定花销」记录仍出现在记账页的「账单」分区；`/api/stats` 的 `expense_due` 与升级前一致（新口径只增不改）。`expenses` 新增的三列是纯可空列、不重建表，旧记录无需处理。
+1. **本轮待用户执行**：NAS 上 `git pull --ff-only && ./deploy`，一次性拉到 `fb4e3d2`。这一跳累计包含 Alembic `0008`（记账域四表 + `expenses` 三列）、`0009`（书签表）、`0010`（`ledger_books` + 两列 `book_id`），CLI 恢复支持版本已同步升到 `0010`。`deploy` 会在迁移前自动备份旧库；三处迁移都是新增表或纯可空列，不重建既有表。部署后建议硬刷新（`Cmd/Ctrl + Shift + R`）丢掉旧 CSS 缓存，并在真实数据上确认：深色下卡片之间留白不再是米白、切主题后刷新首帧即深色；旧「固定花销」记录仍出现在记账页「账单」分区；旧账单与流水都落在「日常」账本下、各账户余额与升级前一致、切到「全部账本」时月度统计与以前相同；书签入口在侧栏底部与移动端「更多」抽屉。
 2. NAS 首次部署已于 2026-09-16 由用户确认成功（用户反馈；本会话未远程连接 NAS 复核）。
 3. 用户在 NAS 执行 `git pull --ff-only && ./deploy`（迁移前 deploy 会自动备份旧库）。`c7439f8` 修复了 NAS 首次部署中「Web 入口到后端的健康检查」被 backend 容器出网代理拦截的问题，重新部署即可通过；基线此前未记录，本次会重新构建并落库。累计包含 Alembic `0003`–`0008` 与新增 `DIGITAL_LIFE_DISABLE_METADATA`、`DIGITAL_LIFE_TMDB_API_KEY` 配置项；追剧元数据搜索覆盖动漫、剧集、电影（双源可选，封面后端代理）；打卡回归纯每日必做，「在做」为独立功能；移动端底部导航为 5 主入口 + 更多抽屉；「周期费用」已扩为记账模块（页面键仍为 `expenses`）。
 4. 如后续通过域名公网访问，按 README 配置 HTTPS、Secure Cookie 和可信 Origin；建议先补登录失败限速和 NAS 侧自动定期备份（2026-09-16 评审提出，尚未实施，仅内网使用时可放缓）。
