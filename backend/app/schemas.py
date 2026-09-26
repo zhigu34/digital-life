@@ -122,6 +122,9 @@ class TaskPayload(Payload):
 class TaskView(TaskPayload):
     id: int
     created_at: datetime
+    # Server-derived from `status`; deliberately absent from TaskPayload so a
+    # client can never set a completion date of its own choosing.
+    completed_on: date | None = None
 
 
 class ExpensePayload(Payload):

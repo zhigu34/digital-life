@@ -6,10 +6,11 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select, text
 from sqlalchemy.exc import SQLAlchemyError
 
-from app import admin, auth, checkins, imports, maintenance, records, stats
+from app import admin, auth, imports, maintenance, records, stats
 from app.bookmarks.router import router as bookmarks_router
 from app.config import Settings
 from app.database import make_engine, migrate, session_factory
+from app.groups.router import router as groups_router
 from app.ledger.router import router as ledger_router
 from app.models import Base
 from app.shows.metadata import router as shows_metadata_router
@@ -74,7 +75,7 @@ def create_app(data_dir=None):
     app.include_router(records.router)
     app.include_router(maintenance.router)
     app.include_router(stats.router)
-    app.include_router(checkins.router)
+    app.include_router(groups_router)
     app.include_router(ledger_router)
     app.include_router(bookmarks_router)
     app.include_router(imports.router)

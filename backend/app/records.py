@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import Identity, authenticated, validated_patch
 from app.database import get_db
+from app.groups.service import export_groups
 from app.ledger.schemas import ExpensePayPayload
 from app.ledger.service import (
     check_entry_date,
@@ -17,8 +18,6 @@ from app.ledger.service import (
 from app.maintenance_schemas import MaintenanceLogView, MaintenanceView
 from app.models import (
     Bookmark,
-    CheckIn,
-    CheckInLog,
     Expense,
     LedgerAccount,
     LedgerBook,
@@ -73,6 +72,20 @@ def owned(db, model, item_id, user_id):
     return record
 
 
+def sync_task_completion(item, timezone, previous_status=None):
+    """A one-off to-do records the day it was closed, and nothing else.
+
+    Only a transition writes the date: editing the title of an already finished
+    task must not move its completion day to today. Long-term work keeps its
+    history in task_completions instead.
+    """
+    if item.status == "done":
+        if previous_status != "done":
+            item.completed_on = user_today(timezone)
+    else:
+        item.completed_on = None
+
+
 def register_collection(name, model, create_schema, patch_schema, view):
     def list_records(identity: Identity = Depends(authenticated), db: Session = Depends(get_db)):
         return db.scalars(
@@ -97,6 +110,8 @@ def register_collection(name, model, create_schema, patch_schema, view):
         if model in (Task, Note, Project):
             values["created_at"] = datetime.now(UTC).replace(tzinfo=None)
         item = model(user_id=identity.user.id, **values)
+        if model is Task:
+            sync_task_completion(item, identity.user.timezone)
         db.add(item)
         db.commit()
         return item
@@ -108,11 +123,14 @@ def register_collection(name, model, create_schema, patch_schema, view):
         db: Session = Depends(get_db),
     ):
         item = owned(db, model, item_id, identity.user.id)
+        previous_status = item.status if model is Task else None
         values = validated_patch(create_schema, item, payload).model_dump()
         if model is Expense:
             validate_expense_links(db, identity.user.id, values)
         for key, value in values.items():
             setattr(item, key, value)
+        if model is Task:
+            sync_task_completion(item, identity.user.timezone, previous_status)
         db.commit()
         return item
 
@@ -254,34 +272,7 @@ def export_data(identity: Identity = Depends(authenticated), db: Session = Depen
             .order_by(MaintenanceLog.id)
         )
     ]
-    data["checkins"] = [
-        {
-            "id": row.id,
-            "title": row.title,
-            "notes": row.notes,
-            "kind": row.kind,
-            "active": row.active,
-            "created_at": row.created_at,
-        }
-        for row in db.scalars(
-            select(CheckIn).where(CheckIn.user_id == identity.user.id).order_by(CheckIn.id)
-        )
-    ]
-    data["checkin_logs"] = [
-        {
-            "id": row.id,
-            "checkin_id": row.checkin_id,
-            "checked_on": row.checked_on,
-            "note": row.note,
-            "created_at": row.created_at,
-        }
-        for row in db.scalars(
-            select(CheckInLog)
-            .join(CheckIn)
-            .where(CheckIn.user_id == identity.user.id)
-            .order_by(CheckInLog.id)
-        )
-    ]
+    data.update(export_groups(db, identity.user.id))
 
     def ledger_export(model, fields):
         return [

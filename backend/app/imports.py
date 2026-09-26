@@ -1,6 +1,6 @@
 """Replace an account's life data from a personal JSON export."""
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -11,6 +11,8 @@ from sqlalchemy.orm import Session
 from app.auth import Identity, authenticated
 from app.bookmarks.schemas import BookmarkPayload
 from app.database import get_db
+from app.groups.schemas import GroupTitle, RepeatUnit
+from app.groups.service import now as groups_now
 from app.ledger.schemas import (
     AccountPayload,
     BookPayload,
@@ -23,8 +25,6 @@ from app.maintenance import calculated_due
 from app.maintenance_schemas import MaintenanceCreate, MaintenanceLogView
 from app.models import (
     Bookmark,
-    CheckIn,
-    CheckInLog,
     Expense,
     LedgerAccount,
     LedgerBook,
@@ -38,6 +38,9 @@ from app.models import (
     Project,
     Show,
     Task,
+    TaskCompletion,
+    TaskGroup,
+    TaskGroupItem,
 )
 from app.schemas import (
     ExpensePayload,
@@ -90,7 +93,36 @@ class MaintenanceLogRow(MaintenanceLogView):
     model_config = IGNORE_EXTRA
 
 
-class CheckInRow(BaseModel):
+class TaskGroupRow(BaseModel):
+    model_config = IGNORE_EXTRA
+    title: GroupTitle
+    notes: Notes = ""
+    archived: bool = False
+    archived_on: ISODate | None = None
+    created_at: datetime | None = None
+
+
+class TaskGroupItemRow(BaseModel):
+    model_config = IGNORE_EXTRA
+    group_id: int
+    title: GroupTitle
+    repeat_unit: RepeatUnit = "day"
+    # Older or hand-written files may omit it; the earliest completion is used.
+    start_date: ISODate | None = None
+    created_at: datetime | None = None
+
+
+class TaskCompletionRow(BaseModel):
+    model_config = IGNORE_EXTRA
+    item_id: int
+    completed_on: ISODate
+    note: Notes = ""
+    created_at: datetime | None = None
+
+
+class LegacyCheckInRow(BaseModel):
+    """Exports written before migration 0011 carried check-in items."""
+
     model_config = IGNORE_EXTRA
     title: str = Field(min_length=1, max_length=120)
     notes: Notes = ""
@@ -111,7 +143,7 @@ class BookmarkRow(BookmarkPayload):
     created_at: datetime | None = None
 
 
-class CheckInLogRow(BaseModel):
+class LegacyCheckInLogRow(BaseModel):
     model_config = IGNORE_EXTRA
     checkin_id: int
     checked_on: ISODate
@@ -211,25 +243,36 @@ def import_data(
     }
     maintenance_rows = parse_rows(payload, "maintenance", MaintenanceRow)
     log_rows = parse_rows(payload, "maintenance_logs", MaintenanceLogRow)
-    checkin_rows = parse_rows(payload, "checkins", CheckInRow)
-    checkin_log_rows = parse_rows(payload, "checkin_logs", CheckInLogRow)
+    group_rows = parse_rows(payload, "task_groups", TaskGroupRow)
+    item_rows = parse_rows(payload, "task_group_items", TaskGroupItemRow)
+    completion_rows = parse_rows(payload, "task_completions", TaskCompletionRow)
+    # Exports written before the long-term task merge still carry check-ins.
+    # They are converted rather than rejected, so an old backup stays restorable.
+    legacy_rows = parse_rows(payload, "checkins", LegacyCheckInRow)
+    legacy_log_rows = parse_rows(payload, "checkin_logs", LegacyCheckInLogRow)
     total = (
         sum(len(rows) for rows in collections.values())
         + len(maintenance_rows)
         + len(log_rows)
-        + len(checkin_rows)
-        + len(checkin_log_rows)
+        + len(group_rows)
+        + len(item_rows)
+        + len(completion_rows)
+        + len(legacy_rows)
+        + len(legacy_log_rows)
     )
     if total > MAX_TOTAL:
         raise HTTPException(422, "导入记录总数超出上限")
     if (
         not any(len(rows) for rows in collections.values())
         and not maintenance_rows
-        and not checkin_rows
+        and not group_rows
+        and not legacy_rows
     ):
         raise HTTPException(422, "文件里没有任何生活记录")
     raw_ids = read_export_ids(payload, "maintenance")
-    checkin_ids = read_export_ids(payload, "checkins")
+    legacy_ids = read_export_ids(payload, "checkins")
+    group_ids = read_export_ids(payload, "task_groups")
+    item_ids = read_export_ids(payload, "task_group_items")
     # Ledger rows carry cross references, so every collection that can be pointed
     # at needs its old ids kept for translation. A pre-ledger export lacks these
     # keys: they parse as empty and the ledger is cleared, which is the expected
@@ -250,25 +293,46 @@ def import_data(
             raise HTTPException(422, "导入的完成历史中存在同一天重复记录")
         seen[log.completed_on] = log
 
-    checkin_logs_by_item = {}
-    for index, log in enumerate(checkin_log_rows, 1):
-        if log.checkin_id not in checkin_ids:
+    # A group without items would never show anything, and an item must belong
+    # to a group in the same file: both are rejected before anything is deleted.
+    items_by_group: dict[int, list[tuple[int, TaskGroupItemRow]]] = {}
+    for old_item_id, item in zip(item_ids, item_rows, strict=True):
+        if item.group_id not in group_ids:
+            raise HTTPException(422, "task_group_items 引用了不存在的长期任务")
+        items_by_group.setdefault(item.group_id, []).append((old_item_id, item))
+    for group_id in group_ids:
+        if not items_by_group.get(group_id):
+            raise HTTPException(422, "导入的长期任务缺少打卡项")
+
+    completions_by_item: dict[int, dict[date, TaskCompletionRow]] = {}
+    for index, row in enumerate(completion_rows, 1):
+        if row.item_id not in item_ids:
+            raise HTTPException(422, f"task_completions 第 {index} 条引用了不存在的打卡项")
+        seen = completions_by_item.setdefault(row.item_id, {})
+        if row.completed_on in seen:
+            raise HTTPException(422, "导入的打卡记录中存在同一天重复")
+        seen[row.completed_on] = row
+
+    legacy_logs_by_item: dict[int, dict[date, LegacyCheckInLogRow]] = {}
+    for index, log in enumerate(legacy_log_rows, 1):
+        if log.checkin_id not in legacy_ids:
             raise HTTPException(422, f"checkin_logs 第 {index} 条引用了不存在的打卡项目")
-        seen = checkin_logs_by_item.setdefault(log.checkin_id, {})
+        seen = legacy_logs_by_item.setdefault(log.checkin_id, {})
         if log.checked_on in seen:
             raise HTTPException(422, "导入的打卡记录中存在同一天重复")
         seen[log.checked_on] = log
 
-    # Older exports mixed "ongoing" items into check-ins; they become
-    # projects now, with their day logs summarized into notes.
+    # Older exports mixed "ongoing" items into check-ins; they stay projects,
+    # with their day logs summarized into notes. Daily items become one-item
+    # groups with a daily period, exactly like migration 0011 does.
     kept_checkins = []
     converted_projects = []
-    for item_id, row in zip(checkin_ids, checkin_rows, strict=True):
+    for item_id, row in zip(legacy_ids, legacy_rows, strict=True):
         if row.kind == "daily":
             kept_checkins.append((item_id, row))
             continue
         notes = row.notes
-        days = sorted(checkin_logs_by_item.get(item_id, {}))
+        days = sorted(legacy_logs_by_item.get(item_id, {}))
         if days:
             summary = f"原打卡 {len(days)} 条（{days[0]} ~ {days[-1]}）"
             notes = f"{notes}\n{summary}" if notes else summary
@@ -282,11 +346,6 @@ def import_data(
             )
         )
     )
-    db.execute(
-        delete(CheckInLog).where(
-            CheckInLog.checkin_id.in_(select(CheckIn.id).where(CheckIn.user_id == user_id))
-        )
-    )
     for model in (
         LedgerEntry,
         LedgerAccount,
@@ -294,7 +353,8 @@ def import_data(
         LedgerPayee,
         LedgerBook,
         Maintenance,
-        CheckIn,
+        # Deleting a group cascades to its items and their completions.
+        TaskGroup,
         Project,
         Bookmark,
         Task,
@@ -439,6 +499,80 @@ def import_data(
             )
         )
 
+    imported_items = 0
+    imported_completions = 0
+    # One fixed timestamp for rows whose export predates a field, rather than a
+    # fresh call per row.
+    imported_at = groups_now()
+
+    def add_item(group_id, title, repeat_unit, start_date, created_at):
+        nonlocal imported_items
+        item = TaskGroupItem(
+            group_id=group_id,
+            title=title,
+            repeat_unit=repeat_unit,
+            start_date=start_date,
+            created_at=created_at,
+        )
+        db.add(item)
+        db.flush()
+        imported_items += 1
+        return item
+
+    def add_completions(item_id, rows):
+        nonlocal imported_completions
+        for completed_on, row in sorted(rows.items()):
+            db.add(
+                TaskCompletion(
+                    item_id=item_id,
+                    completed_on=completed_on,
+                    note=row.note,
+                    created_at=row.created_at or imported_at,
+                )
+            )
+            imported_completions += 1
+
+    for old_id, row in zip(group_ids, group_rows, strict=True):
+        created = row.created_at or imported_at
+        group = TaskGroup(
+            user_id=user_id,
+            title=row.title,
+            notes=row.notes,
+            archived=row.archived,
+            archived_on=row.archived_on,
+            created_at=created,
+        )
+        db.add(group)
+        db.flush()
+        for old_item_id, item in items_by_group.get(old_id, []):
+            days = sorted(completions_by_item.get(old_item_id, {}))
+            item_created = item.created_at or created
+            # Never later than the first completion: a period grid must not show
+            # missed periods before the item could have been checked.
+            start_date = item.start_date or (days[0] if days else item_created.date())
+            created_item = add_item(
+                group.id, item.title, item.repeat_unit, start_date, item_created
+            )
+            add_completions(created_item.id, completions_by_item.get(old_item_id) or {})
+
+    for old_id, row in kept_checkins:
+        days = sorted(legacy_logs_by_item.get(old_id, {}))
+        created = row.created_at or imported_at
+        group = TaskGroup(
+            user_id=user_id,
+            title=row.title,
+            notes=row.notes,
+            archived=not row.active,
+            archived_on=None,
+            created_at=created,
+        )
+        db.add(group)
+        db.flush()
+        created_item = add_item(
+            group.id, row.title, "day", days[0] if days else created.date(), created
+        )
+        add_completions(created_item.id, legacy_logs_by_item.get(old_id) or {})
+
     imported_logs = 0
     for item_id, row in zip(raw_ids, maintenance_rows, strict=True):
         logs = logs_by_item.get(item_id) or {
@@ -467,25 +601,6 @@ def import_data(
                 )
             )
             imported_logs += 1
-    imported_checkin_logs = 0
-    for item_id, row in kept_checkins:
-        item = CheckIn(
-            user_id=user_id,
-            created_at=row.created_at or datetime.now(UTC).replace(tzinfo=None),
-            **row.model_dump(exclude={"created_at"}),
-        )
-        db.add(item)
-        db.flush()
-        for log in (checkin_logs_by_item.get(item_id) or {}).values():
-            db.add(
-                CheckInLog(
-                    checkin_id=item.id,
-                    checked_on=log.checked_on,
-                    note=log.note,
-                    created_at=log.created_at or datetime.now(UTC).replace(tzinfo=None),
-                )
-            )
-            imported_checkin_logs += 1
     db.commit()
     return {
         "imported": {
@@ -496,8 +611,9 @@ def import_data(
             "notes": len(collections["notes"]),
             "maintenance": len(maintenance_rows),
             "maintenance_logs": imported_logs,
-            "checkins": len(kept_checkins),
-            "checkin_logs": imported_checkin_logs,
+            "task_groups": len(group_rows) + len(kept_checkins),
+            "task_group_items": imported_items,
+            "task_completions": imported_completions,
             "projects": len(collections["projects"]) + len(converted_projects),
             "bookmarks": len(collections["bookmarks"]),
             "ledger_books": len(book_map),

@@ -1,6 +1,7 @@
 import sqlite3
 
 import pytest
+import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
@@ -11,7 +12,7 @@ from app.cli import backup, restore
 from app.config import Settings
 from app.database import ROOT, make_engine, migrate, session_factory
 from app.main import create_app
-from app.models import Task, User
+from app.models import User
 from app.security import hash_password
 
 
@@ -34,7 +35,15 @@ def test_migrate_0001_database_keeps_old_accounts_and_records(tmp_path):
         )
         db.add(user)
         db.flush()
-        db.add(Task(user_id=user.id, title="迁移前待办", created_at=datetime(2024, 1, 1)))
+        # Raw SQL on purpose: this schema predates columns the current models
+        # carry, so an ORM insert would name a column the table does not have.
+        db.execute(
+            sa.text(
+                "INSERT INTO tasks (user_id, title, notes, status, priority, created_at) "
+                "VALUES (:user_id, '迁移前待办', '', 'todo', 'normal', :created_at)"
+            ),
+            {"user_id": user.id, "created_at": datetime(2024, 1, 1)},
+        )
         db.commit()
     old_backup = tmp_path / "before-upgrade.db"
     backup(settings, old_backup)
@@ -50,7 +59,7 @@ def test_migrate_0001_database_keeps_old_accounts_and_records(tmp_path):
         assert client.get("/api/maintenance").json() == []
         create_item(client, csrf)
     with sqlite3.connect(settings.database_path) as db:
-        assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0010",)
+        assert db.execute("SELECT version_num FROM alembic_version").fetchone() == ("0011",)
         assert db.execute("PRAGMA foreign_key_check").fetchall() == []
     # Old snapshots stay usable with their matching version, not silently restored into v3.
     with pytest.raises(ValueError):

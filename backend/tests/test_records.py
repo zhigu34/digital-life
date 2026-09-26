@@ -1,5 +1,9 @@
 import pytest
 
+from app.timezones import user_today
+
+TODAY = user_today("Asia/Shanghai")
+
 COLLECTIONS = [
     ("tasks", {"title": "私事"}),
     ("expenses", {"title": "房租", "amount_cents": 120000, "next_due": "2027-01-31"}),
@@ -232,3 +236,26 @@ def test_out_of_range_record_ids_are_rejected_without_database_overflow(accounts
     if collection in ("expenses", "shows"):
         action = "pay" if collection == "expenses" else "advance"
         assert alice.post(path + "/" + action, headers=ah).status_code in (404, 422)
+
+
+def test_one_off_task_records_and_clears_its_completion_day(accounts):
+    _, _, _, alice, ah, bob, bh = accounts
+    created = alice.post("/api/tasks", headers=ah, json={"title": "交房租"}).json()
+    assert created["completed_on"] is None
+    path = f"/api/tasks/{created['id']}"
+    assert alice.patch(path, headers=ah, json={"completed_on": "2020-01-02"}).status_code == 422
+
+    done = alice.patch(path, headers=ah, json={"status": "done"}).json()
+    assert done["completed_on"] == TODAY.isoformat()
+    # Editing a finished task keeps the day it was closed on.
+    renamed = alice.patch(path, headers=ah, json={"title": "交房租（已付）"}).json()
+    assert renamed["completed_on"] == TODAY.isoformat()
+    reopened = alice.patch(path, headers=ah, json={"status": "todo"}).json()
+    assert reopened["completed_on"] is None
+
+    # A task that starts out finished is dated the same way.
+    finished = alice.post(
+        "/api/tasks", headers=ah, json={"title": "早就做完了", "status": "done"}
+    ).json()
+    assert finished["completed_on"] == TODAY.isoformat()
+    assert bob.get("/api/export", headers=bh).json()["tasks"] == []

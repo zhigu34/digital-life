@@ -45,12 +45,17 @@ class Owned:
 
 
 class Task(Owned, Base):
+    """A one-off to-do. Long-term repeating work lives in TaskGroup."""
+
     __tablename__ = "tasks"
     title: Mapped[str] = mapped_column(String(160))
     notes: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(10), default="todo")
     due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     priority: Mapped[str] = mapped_column(String(10), default="normal")
+    # Derived from status: set to the user's local today when the task turns
+    # done, cleared when it reopens. Added by migration 0011.
+    completed_on: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime)
 
 
@@ -111,12 +116,31 @@ class Note(Owned, Base):
     created_at: Mapped[datetime] = mapped_column(DateTime)
 
 
-class CheckIn(Owned, Base):
-    __tablename__ = "checkins"
+class TaskGroup(Owned, Base):
+    """A long-term task: a container whose items are checked against periods."""
+
+    __tablename__ = "task_groups"
     title: Mapped[str] = mapped_column(String(120))
     notes: Mapped[str] = mapped_column(Text, default="")
-    kind: Mapped[str] = mapped_column(String(10))
-    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Periods after this day are no longer expected, so archiving never turns
+    # the future into a wall of missed periods. Null while the group is active.
+    archived_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class TaskGroupItem(Base):
+    """One check item inside a group; its own period is day, week or month."""
+
+    __tablename__ = "task_group_items"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    group_id: Mapped[int] = mapped_column(
+        ForeignKey("task_groups.id", ondelete="CASCADE"),
+        index=True,
+    )
+    title: Mapped[str] = mapped_column(String(120))
+    repeat_unit: Mapped[str] = mapped_column(String(8))
+    start_date: Mapped[date] = mapped_column(Date)
     created_at: Mapped[datetime] = mapped_column(DateTime)
 
 
@@ -128,15 +152,17 @@ class Project(Owned, Base):
     created_at: Mapped[datetime] = mapped_column(DateTime)
 
 
-class CheckInLog(Base):
-    __tablename__ = "checkin_logs"
-    __table_args__ = (UniqueConstraint("checkin_id", "checked_on", name="uq_checkin_logs_day"),)
+class TaskCompletion(Base):
+    """One day of a check item. Whether a period was satisfied is derived."""
+
+    __tablename__ = "task_completions"
+    __table_args__ = (UniqueConstraint("item_id", "completed_on", name="uq_task_completions_day"),)
     id: Mapped[int] = mapped_column(primary_key=True)
-    checkin_id: Mapped[int] = mapped_column(
-        ForeignKey("checkins.id", ondelete="CASCADE"),
+    item_id: Mapped[int] = mapped_column(
+        ForeignKey("task_group_items.id", ondelete="CASCADE"),
         index=True,
     )
-    checked_on: Mapped[date] = mapped_column(Date)
+    completed_on: Mapped[date] = mapped_column(Date)
     note: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime)
 
