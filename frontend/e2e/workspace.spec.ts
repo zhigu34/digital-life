@@ -414,6 +414,29 @@ test('metadata search fills title and episode count for anime and drama', async 
   await expect(card).toContainText('1 季')
   await expect(card).toContainText('已完结')
   await expect(card.locator('.show-cover img')).toHaveAttribute('alt', '漫长的季节')
+  // 封面与卡片齐平：封面框高度等于卡片内容高度，图片按 cover 铺满整框。
+  // 回归点：原来是固定窄宽度 + object-fit: contain，图片上下各留一条底色带
+  // （545px 视口实测上下各 16.7px），深色下看起来就是封面比卡片矮一截。
+  const geometry = await card.evaluate((el) => {
+    const cover = el.querySelector('.show-cover')
+    const img = cover?.querySelector('img') as HTMLImageElement | null
+    if (!cover || !img || !img.naturalWidth) return null
+    const box = cover.getBoundingClientRect()
+    const scale =
+      getComputedStyle(img).objectFit === 'cover'
+        ? Math.max(box.width / img.naturalWidth, box.height / img.naturalHeight)
+        : Math.min(box.width / img.naturalWidth, box.height / img.naturalHeight)
+    return {
+      cardHeight: el.getBoundingClientRect().height,
+      box: { width: box.width, height: box.height },
+      painted: { width: img.naturalWidth * scale, height: img.naturalHeight * scale },
+    }
+  })
+  expect(geometry).not.toBeNull()
+  // 卡片上下各有 1px 边框，所以允许 2px 误差
+  expect(Math.abs(geometry!.box.height - (geometry!.cardHeight - 2))).toBeLessThanOrEqual(2)
+  expect(geometry!.painted.height).toBeGreaterThanOrEqual(geometry!.box.height - 0.5)
+  expect(geometry!.painted.width).toBeGreaterThanOrEqual(geometry!.box.width - 0.5)
   expect(requestedSources).toContain('芙莉莲@bangumi')
   expect(requestedSources).toContain('漫长的季节@tmdb')
   await page.unroute('**/api/shows/metadata**')

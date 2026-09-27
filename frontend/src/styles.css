@@ -2365,6 +2365,19 @@ input:disabled {
 [data-theme="dark"] .poster-thumb {
   background: #2b2e34;
 }
+/* 没有封面时的占位底色：浅色下是柔和的浅色渐变，深色下必须跟着暗下来 */
+[data-theme="dark"] .show-cover {
+  background: linear-gradient(135deg, #1b2331, #202a3a);
+  color: var(--muted-2);
+}
+[data-theme="dark"] .show-cover.anime {
+  background: linear-gradient(135deg, #241c3a, #1b2331);
+  color: var(--violet);
+}
+[data-theme="dark"] .show-cover.movie {
+  background: linear-gradient(135deg, #1b2331, #2c2312);
+  color: var(--warn);
+}
 [data-theme="dark"] .show-score {
   background: #0a0e15cc;
 }
@@ -2848,9 +2861,7 @@ input:disabled {
     margin-left: 0;
     width: 100%;
   }
-  .show-cover {
-    width: 62px;
-  }
+  /* 封面宽度由 features/shows/shows.css 的 clamp() 统一决定，这里只调兜底图标大小 */
   .show-cover svg {
     width: 24px;
   }

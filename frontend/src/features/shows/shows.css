@@ -38,6 +38,28 @@
   gap: 0;
 }
 
+/* 封面高度与卡片齐平。
+   两个原因让封面看起来比卡片矮一截：
+   1) 封面框固定窄宽度（92/82/62px）+ 图片 `object-fit: contain`，海报（约 2:3）比框宽，
+      图片上下各留一条底色带（545px 视口实测上下各 16.7px），深色下尤其明显；
+   2) 图片 `height: 100%` 在自适应高度的封面框里解析不了，会退回按图片自身比例算高度 ——
+      海报比例于是反过来把整张卡片撑高（实测长图 132×2.25=297 直接变成卡片高度）。
+   现在：封面框宽度收在 clamp(96px, 30%, 132px) 并撑满卡片高度，图片绝对定位铺满封面框、
+   用 cover 裁切填满 —— 上下不留带、卡片高度只由正文决定。 */
+.card-grid .show-card .show-cover {
+  flex: 0 0 clamp(96px, 30%, 132px);
+  align-self: stretch;
+}
+
+.card-grid .show-card .show-cover img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
 .show-card-heading {
   display: flex;
   justify-content: space-between;
@@ -191,9 +213,7 @@
     padding: 15px 16px;
   }
 
-  .show-cover {
-    width: 82px;
-  }
+  /* 封面宽度见文件顶部的 clamp()：这里不再单独改宽度，避免与它冲突 */
 
   .show-detail-form .form-section {
     padding: 14px;

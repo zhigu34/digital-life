@@ -49,6 +49,7 @@
   - **悬停会被深色块吃掉**：`[data-theme="dark"] .x.done/.missed` 这类规则的权重与 `.x:hover:not(:disabled)` 相同、位置更靠后，会把悬停反馈整个覆盖；要在改版层末尾再声明一次悬停（见 `features/tasks/tasks.css` 的 `.period-cell:hover`）。
   - 次要文字分两档且都要过 AA：`--muted`（说明、脚注、占位符）与 `--muted-2`（eyebrow、序号）。页底色是最差情形，按它取色，不要按纯白取。
   - 当前 UI **没有**代码块与搜索命中标记；`code`/`kbd`/`mark` 的取值已在改版层预置（`--mark-bg`/`--mark-ink`），将来引入富文本或命中高亮时默认达标。
+  **让图片填满一个高度自适应的框（封面/缩略图）**：图片必须绝对定位铺满 —— `position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover`（外层 `position: relative; overflow: hidden`）。用 `height: 100%` 的普通流内图片会踩两个坑：百分比高度解析不了 → 退回按图片自身比例算高度 → **图片比例反过来撑高整张卡片**；而保留原始比例的 `contain` 会在框内留下上下底色带（浅色下接近白、看不见，深色下就是一条明显的带）。追剧卡片（`features/shows/shows.css`）是现成范例，回归断言在 E2E 的 `metadata search` 用例里。
 - 工具条里的表单控件不能直接吃全局表单样式：`styles.css` 的 `label { margin-bottom: 18px }` 与 `input, select, textarea { width: 100%; margin-top: 7px }` 是给弹窗表单写的，落到 `.collection-toolbar` 里会让下拉比搜索框低 7px（且被压缩后把「账户」「月份」这类两字标签挤成两行）。工具条内的 `label` 必须显式 `margin: 0`，`select` 用 `width: auto` 并去掉 `margin-top`（见 `features/ledger/ledger.css` 的 `.select-field` 与 `.merge-actions select`）。
 - 统计卡片放进 grid 容器时要去掉 `.summary-card` 的 `max-width: 400px`（网格轨道本身已经是上限）：否则宽屏下列宽超过 400px，卡片行右边缘会比页面右边界短约 20px，看起来没对齐。
 - 手写 `:value` + `@change` 的下拉（不是 `v-model`）不能用 `:value="null"` 当空选项：Vue 会移除该 option 的 value 属性、回退成选项文本，而 `select` 的 DOM `value` 是空串，两者不匹配 → `selectedIndex = -1`，下拉框整块显示空白（记账页「账户」筛选与「记一笔」的账户选择都曾如此）。空选项写 `value=""`，select 的 `:value` 写 `xxx ?? ''`；`v-model` 配 `:value="null"` 走的是 Vue 的 `_value` 比较，不受影响。
