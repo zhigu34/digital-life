@@ -21,6 +21,10 @@
 
 验证：`vue-tsc`、生产构建通过；**本地 Playwright 52 项（桌面 + 手机）全绿**。改动只在前端样式（`features/shows/shows.css` + `styles.css` 的深色占位与两处死规则）与 E2E，无接口/结构变更、无迁移（仍是 `0011`）。**NAS 部署由用户执行**。
 
+分支 CI [Actions #36305083986](https://github.com/zhigu34/digital-life/actions/runs/36305083986)（head `63bf828`）与 main CI [36305556164](https://github.com/zhigu34/digital-life/actions/runs/36305556164) 三个 job 全部 success，按既有授权走快进合并。
+
+**顺带发现一条偶发（未修，与本轮改动无关）**：全量本地 E2E 有一次 `long-term tasks check in` 的移动端用例失败，页面状态是「累计打卡 1 次 + 最近打卡还没有 + 今天还没打卡 + 执行日志里有今天的记录」——像是打卡 POST 与挂载时那次 `GET /api/groups` 之间的响应竞争（`useGroups.load()` 有 `loadVersion` 守卫，但 `check()`/`replaceItem()` 不会让在途的 `load()` 失效，旧响应后到就会覆盖掉新结果）。单独跑该用例稳定通过，`/api/groups` 的返回经 API 探针确认正确（打卡后 `recent_days` 就含今天），CI 的 docker-e2e 也一次通过，所以本轮没有动它；要修的话就是让所有变更也参与 `loadVersion` 序号。
+
 ## 2026-09-27 深色高亮修复：选中/焦点/悬停/语义色全部过 WCAG AA
 
 用户报「深色模式下部分高亮显示异常」，要求覆盖代码高亮、选中文本、搜索命中、悬停、焦点，并达到无障碍对比度。先写了一个可复跑的审计脚本 `.local/dark-highlight-audit.mjs`（浅色/深色同一套口径），再按数据修，而不是凭肉眼改色：
