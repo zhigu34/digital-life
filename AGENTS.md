@@ -42,6 +42,13 @@
   主题由 `<html data-theme="light|dark">` 驱动，深色覆盖集中在 `styles.css` 的 `[data-theme="dark"]` 块。`:root` 的 `color`/`background` 必须引用 `var(--ink)`/`var(--bg)`（写成字面值会让文档画布在深色下仍是浅色，卡片之间的留白全部发白）。`frontend/index.html` 的 `<head>` 内联脚本在样式生效前读 `localStorage` 里的偏好定下首帧主题，避免启动屏与登录页先闪浅色；服务端 `user.theme` 仍是权威值，登录后由 `App.vue` 的 `theme()` 覆盖缓存。组件新增浅色字面值（半透明浮层、危险色底、占位块）时，必须同步补深色覆盖。
   **2026-09 视觉改版（Dashboard 风格）**：冷灰画布 + 纯白卡片 + 蓝色主色，实现在 `styles.css` **文件末尾的「2026-09 视觉改版」层**（`features/tasks/tasks.css` 末尾也有一段），只做覆盖、不改原规则，回退删掉那一段即可。写新样式时的约定：**主色一律用 `var(--green)`（它现在承载的是蓝色 `#2563eb`，名字没改以免全站改选择器）**；「成功/达标/已完成」用 `var(--success)`（绿）与 `var(--success-soft)`；提醒/逾期用 `var(--warn-ink)`；错误用 `var(--danger)`。卡片形状统一用 `var(--radius)`（14px）、描边 `var(--border)`、投影 `var(--shadow)`/`var(--shadow-md)`，别再写 10px 圆角或 `#315d49` 这类旧字面值。改配色后跑了深色亮度扫描（面积 ≥1500px²、亮度 ≥0.55 的区块应为 0）与全量 E2E 布局断言。
   **窄屏分组头部用 grid 而不是 flex-wrap**：`.group-head` 在 `≤700px` 下换成两列网格（折叠钮 + 进度徽标一行、标题独占一行、操作按钮一行），否则 `flex-wrap` 会把 `.group-head-main` 压到最小宽度、标题变成竖排一个字一行。
+  **高亮与对比度的硬约定**（审计脚本 `.local/dark-highlight-audit.mjs`，浅色深色同一套口径；改配色或加交互态后必须跑一遍）：正文 4.5:1、大字与图标/焦点环 3:1。
+  - 主色**当文字**用 `var(--green-strong)`，当**填充/描边**用 `var(--green)`；实心主色按钮用 `var(--accent-fill)`（白字压在深色主题的 `#3b82f6` 上只有 3.68:1），实心危险按钮用 `var(--danger-fill)`。
+  - 「打卡/达标」这类实心绿用 `var(--success-fill)` + `var(--on-success)`：深色下是深字压亮绿（白字压 `#34d399` 只有 1.9:1），语义文字色另用 `var(--success-ink)`、`var(--warn-ink)`、`var(--danger-ink)`。
+  - **必须有 `::selection`**（`--selection-bg`/`--selection-ink`）：不写就等于用浏览器默认的浅蓝，深色下是浅色文字压浅蓝底、完全读不出来。焦点环用 `var(--focus-ring)`/`var(--focus-ring-soft)` 两个令牌，浅色主题原来的 `#93b4fd` 在白底只有 2.06:1。
+  - **悬停会被深色块吃掉**：`[data-theme="dark"] .x.done/.missed` 这类规则的权重与 `.x:hover:not(:disabled)` 相同、位置更靠后，会把悬停反馈整个覆盖；要在改版层末尾再声明一次悬停（见 `features/tasks/tasks.css` 的 `.period-cell:hover`）。
+  - 次要文字分两档且都要过 AA：`--muted`（说明、脚注、占位符）与 `--muted-2`（eyebrow、序号）。页底色是最差情形，按它取色，不要按纯白取。
+  - 当前 UI **没有**代码块与搜索命中标记；`code`/`kbd`/`mark` 的取值已在改版层预置（`--mark-bg`/`--mark-ink`），将来引入富文本或命中高亮时默认达标。
 - 工具条里的表单控件不能直接吃全局表单样式：`styles.css` 的 `label { margin-bottom: 18px }` 与 `input, select, textarea { width: 100%; margin-top: 7px }` 是给弹窗表单写的，落到 `.collection-toolbar` 里会让下拉比搜索框低 7px（且被压缩后把「账户」「月份」这类两字标签挤成两行）。工具条内的 `label` 必须显式 `margin: 0`，`select` 用 `width: auto` 并去掉 `margin-top`（见 `features/ledger/ledger.css` 的 `.select-field` 与 `.merge-actions select`）。
 - 统计卡片放进 grid 容器时要去掉 `.summary-card` 的 `max-width: 400px`（网格轨道本身已经是上限）：否则宽屏下列宽超过 400px，卡片行右边缘会比页面右边界短约 20px，看起来没对齐。
 - 手写 `:value` + `@change` 的下拉（不是 `v-model`）不能用 `:value="null"` 当空选项：Vue 会移除该 option 的 value 属性、回退成选项文本，而 `select` 的 DOM `value` 是空串，两者不匹配 → `selectedIndex = -1`，下拉框整块显示空白（记账页「账户」筛选与「记一笔」的账户选择都曾如此）。空选项写 `value=""`，select 的 `:value` 写 `xxx ?? ''`；`v-model` 配 `:value="null"` 走的是 Vue 的 `_value` 比较，不受影响。

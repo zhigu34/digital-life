@@ -20,8 +20,8 @@
   --soft-3: #e9edf3;
   --ink: #0f172a;
   --ink-2: #334155;
-  --muted: #8a92a6;
-  --muted-2: #a9b0c0;
+  --muted: #4f5a6b;
+  --muted-2: #63707f;
   --border: #eceef2;
   --border-strong: #e3e7ed;
   /* 主色沿用 --green 这个名字，避免全站改选择器；语义成功色改用 --success */
@@ -37,6 +37,21 @@
   --warn-soft: #fef5e6;
   --violet: #7c3aed;
   --violet-soft: #f2ecfe;
+  --accent-fill: #2563eb;
+  --accent-fill-hover: #1d4ed8;
+  --danger-fill: #dc2626;
+  --danger-fill-hover: #b91c1c;
+  --success-fill: #047857;
+  --success-ink: #047857;
+  --danger-ink: #b3352c;
+  --on-success: #ffffff;
+  --focus-ring: #2563eb;
+  --focus-ring-soft: #2563eb33;
+  --selection-bg: #cfe0ff;
+  --selection-ink: #0f172a;
+  --mark-bg: #ffe8a3;
+  --mark-ink: #3f2d05;
+  --scrim: #0b122066;
   --radius: 14px;
   --radius-sm: 10px;
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.03);
@@ -2198,8 +2213,8 @@ input:disabled {
   --soft-3: #202a3a;
   --ink: #e8ecf3;
   --ink-2: #c2cad8;
-  --muted: #8b95a8;
-  --muted-2: #6b7688;
+  --muted: #9aa3b5;
+  --muted-2: #8b95a8;
   --border: #212a38;
   --border-strong: #2b3546;
   --green: #3b82f6;
@@ -2212,6 +2227,21 @@ input:disabled {
   --danger-soft: #2c1717;
   --warn: #fbbf24;
   --warn-soft: #2c2312;
+  --accent-fill: #2563eb;
+  --accent-fill-hover: #3b82f6;
+  --danger-fill: #dc2626;
+  --danger-fill-hover: #ef4444;
+  --success-fill: #10b981;
+  --success-ink: #34d399;
+  --danger-ink: #fca5a5;
+  --on-success: #06281c;
+  --focus-ring: #93b4fd;
+  --focus-ring-soft: #93b4fd47;
+  --selection-bg: #2b4a86;
+  --selection-ink: #f4f7fc;
+  --mark-bg: #6b4f10;
+  --mark-ink: #fdf3d7;
+  --scrim: #04070d80;
   --violet: #a78bfa;
   --violet-soft: #241c3a;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
@@ -3459,7 +3489,7 @@ input:disabled {
    规则保持可读，回退只需删掉这一段。
    ═══════════════════════════════════════════════════════════════ */
 :root {
-  --warn-ink: #b47a11;
+  --warn-ink: #8a5a09;
 }
 [data-theme="dark"] {
   --warn-ink: #fbbf24;
@@ -3730,4 +3760,216 @@ label {
 }
 .days-pill {
   color: var(--ink);
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   2026-09 高亮与对比度修正
+   审计：.local/dark-highlight-audit.mjs（Tab 遍历焦点环、悬停前后计算样式、
+   ::selection、逐元素对比度）。口径 WCAG AA：正文 4.5:1，大字/图标/焦点环 3:1。
+   覆盖面：选中文本、焦点、悬停、日历"今天"高亮、按钮填充、占位符，以及
+   当前 UI 还没有但预留好的代码块/搜索命中标记。
+   ═══════════════════════════════════════════════════════════════ */
+
+/* 选中文本：原来完全没有规则，深色下是浏览器默认的浅蓝底压浅色文字 */
+::selection {
+  background: var(--selection-bg);
+  color: var(--selection-ink);
+}
+::-moz-selection {
+  background: var(--selection-bg);
+  color: var(--selection-ink);
+}
+
+/* 焦点高亮：原来两套主题共用 #93b4fd，浅色底上只有 2.06:1 */
+button:focus-visible,
+a:focus-visible,
+[tabindex]:focus-visible,
+summary:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--focus-ring) !important;
+  outline: 3px solid var(--focus-ring-soft);
+}
+.search-box:focus-within {
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 3px var(--focus-ring-soft);
+}
+.search-box input:focus {
+  outline: none;
+}
+
+/* 实心按钮：白字压 #3b82f6 只有 3.68:1、压 #ef4444 只有 3.57:1 */
+.primary {
+  background: var(--accent-fill);
+}
+.primary:hover:not(:disabled) {
+  background: var(--accent-fill-hover);
+}
+.danger {
+  background: var(--danger-fill);
+}
+.danger:hover:not(:disabled) {
+  background: var(--danger-fill-hover);
+}
+
+/* 主色作为文字时统一用更深的一档 --green-strong */
+.text-button,
+.icon-button:hover,
+.calendar-today-button,
+.countdown-number strong,
+.summary-card b,
+.metadata-tags em,
+.maintenance-intro strong,
+.maintenance-elapsed > strong,
+.maintenance-reminder-row > span:nth-child(2),
+.sidebar-option:hover,
+.sidebar-option.active,
+.mobile-nav > button.active,
+.mobile-more-sheet > button.active,
+.bookmark-initials,
+.bookmark-star,
+.bill-tag {
+  color: var(--green-strong);
+}
+
+/* 生活横幅：浅色底上压到 4.5:1，深色底上提亮（原来是 2.46–3.59:1） */
+.life-banner h2,
+.life-banner h2 span {
+  color: var(--ink);
+}
+.life-banner p {
+  color: var(--ink-2);
+}
+.banner-kicker,
+.banner-link {
+  color: var(--green-strong);
+}
+.banner-small,
+.art-caption {
+  color: var(--muted);
+}
+.live-dot {
+  background: var(--green);
+}
+
+/* 日历：今天的高亮填充与非本月日期的序号 */
+.cell-hit.today .cell-day {
+  background: var(--accent-fill);
+  color: #ffffff;
+}
+.calendar-cell.outside .cell-day,
+[data-theme="dark"] .calendar-cell.outside .cell-day {
+  color: var(--muted-2);
+}
+
+/* 占位符：原来是 2.0–2.2:1 */
+input::placeholder,
+textarea::placeholder {
+  color: var(--muted-2);
+  opacity: 1;
+}
+
+/* 悬停反馈：浅色与深色都要看得出来（原来这两处没有任何反馈） */
+.maintenance-reminder-row {
+  border-radius: 8px;
+}
+.maintenance-reminder-row:hover:not(:disabled) {
+  background: var(--soft-2);
+}
+.maintenance-reminder-row:hover:not(:disabled) > span:first-child {
+  color: var(--green-strong);
+}
+.main-nav > button.active:hover {
+  filter: brightness(1.04);
+}
+
+/* 遮罩：原来的 #192b244f 是墨绿底 */
+.modal::backdrop {
+  background: var(--scrim);
+  backdrop-filter: blur(4px);
+}
+
+/* 预置：当前 UI 还没有代码块与搜索命中标记，先把两套主题的取值定下来，
+   将来引入富文本或"<mark> 命中"时默认就是达标的 */
+code,
+kbd,
+pre {
+  background: var(--soft-2);
+  color: var(--ink);
+  border-radius: 6px;
+}
+code,
+kbd {
+  padding: 1px 6px;
+  font-size: 0.92em;
+}
+kbd {
+  border: 1px solid var(--border-strong);
+  color: var(--ink-2);
+}
+mark {
+  background: var(--mark-bg);
+  color: var(--mark-ink);
+  border-radius: 4px;
+  padding: 0 3px;
+}
+
+/* 审计剩余两处：退出登录按钮的暖红字（深色 4.43:1）、未开始周期格子的旧绿字（4.09:1） */
+.logout-button {
+  color: var(--danger-strong);
+}
+[data-theme="dark"] .period-cell.before {
+  color: var(--muted-2);
+}
+
+/* 浅色下仍不足 4.5:1 的次要文字与日历色块（深色不受影响：值由深色块另行覆盖） */
+.topbar-right,
+.dashboard-footer,
+.page-footnote,
+.optional {
+  color: var(--muted);
+}
+[data-theme="light"] .eyebrow,
+[data-theme="light"] .section-index,
+[data-theme="light"] .heading-count {
+  color: var(--muted-2);
+}
+[data-theme="light"] .cal-chip.task {
+  color: var(--green-strong);
+}
+[data-theme="light"] .cal-chip.maintenance,
+[data-theme="light"] .cal-chip.overdue {
+  color: #9c3a2c;
+}
+.ledger-page {
+  --ledger-expense: var(--warn-ink);
+}
+
+/* 语义色当文字用时也要过 4.5:1（浅色下的绿/红/琥珀都比填充色更深一档） */
+.tag.done,
+.tag.completed,
+.tag.repeat-week,
+.income-text,
+.ledger-amount.income,
+.positive {
+  color: var(--success-ink);
+}
+[data-theme="light"] .tag.done,
+[data-theme="light"] .tag.completed,
+[data-theme="light"] .tag.repeat-week {
+  color: var(--success-ink);
+}
+[data-theme="light"] .cal-chip.expense {
+  color: var(--warn-ink);
+}
+[data-theme="light"] .tag.task {
+  color: var(--green-strong);
+}
+.period-cell.missed {
+  color: var(--danger-ink);
 }

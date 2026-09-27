@@ -502,3 +502,22 @@
     justify-content: flex-start;
   }
 }
+
+/* 悬停：深色块里的 .period-cell.done/.missed 与 :hover 同权重且更靠后，
+   会把悬停的描边覆盖掉 —— 这里在最后再声明一次，两套主题都保证有反馈 */
+.period-cell:hover:not(:disabled),
+[data-theme="dark"] .period-cell:hover:not(:disabled) {
+  border-color: var(--green);
+  box-shadow: 0 0 0 2px var(--green-soft);
+}
+
+/* 实心绿色（打卡按钮、已达标格子）：白字压亮绿在深色下只有 1.9:1，
+   改用 --success-fill + --on-success（深色是深字压亮绿，浅色是白字压深绿） */
+.checkin-hit.done,
+.task-check.checked,
+.period-cell.done,
+.period-legend i.done {
+  background: var(--success-fill);
+  border-color: var(--success-fill);
+  color: var(--on-success);
+}

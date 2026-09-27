@@ -1,12 +1,12 @@
 /* Ledger feature styles. Colours come from the shared tokens, with an explicit
    dark variant for the two semantic accents (spending orange / income green). */
 .ledger-page {
-  --ledger-expense: #b47a11;
-  --ledger-income: #0f9f74;
+  --ledger-expense: var(--warn-ink);
+  --ledger-income: var(--success-ink);
 }
 [data-theme="dark"] .ledger-page {
-  --ledger-expense: #d3a271;
-  --ledger-income: #8dbb99;
+  --ledger-expense: var(--warn-ink);
+  --ledger-income: var(--success-ink);
 }
 .expense-text,
 .ledger-amount.expense {
