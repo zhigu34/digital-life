@@ -23,6 +23,8 @@
 
 验证：审计脚本在**浅色与深色下对比度失败项均为 0**，29 个可聚焦元素的焦点环全部 ≥3:1，9 类交互组件的悬停均有可见反馈（只读行除外，属预期）；`vue-tsc`、生产构建通过；**本地 Playwright 52 项（桌面 + 手机）全绿**。改动仅限 CSS（`styles.css`、`features/tasks/tasks.css`、`features/ledger/ledger.css` 的收支色令牌），无接口与结构变更、无迁移（仍是 `0011`）。**NAS 部署由用户执行**。
 
+分支 CI [Actions #36300470243](https://github.com/zhigu34/digital-life/actions/runs/36300470243)（head `06f9ddb`）与 main CI [36300861231](https://github.com/zhigu34/digital-life/actions/runs/36300861231) 的 backend / frontend / docker-e2e 三个 job 全部 success，按既有授权走快进合并。
+
 ## 2026-09-27 视觉改版：Dashboard 风格（冷灰画布 + 白卡 + 蓝色主色）
 
 用户给了参考图（Shopeers 那类 SaaS 后台），要求「每个模块都只改视觉风格，展示内容先别动」。先出可点效果图并按其反馈把今日概览的内容换成与线上一致（去掉我编的趋势图/达标率环等），确认后开工，分支 `codex/restyle`。
