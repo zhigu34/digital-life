@@ -22,6 +22,7 @@
 
 验证：后端 `ruff check` + `ruff format --check` 通过、`pytest` 207 项通过（新增 1 项）；前端 Vitest 79 项通过（新增 3 项）、`vue-tsc` 与生产构建通过；`tests/deploy` 21 项通过（新增 2 项）；本地 Playwright 52 项（桌面 + 手机）全绿。本地无 Docker（`docker: command not found`），因此容器内 nginx 的转发那一跳仍由 GitHub Actions 的 docker-e2e 验证（`ci-smoke.py` 新增的断言就是在这一跳上做检查）；`ci-smoke.py` 的 multipart 代码同段复用到本机直连后端跑过一次：3 MB → 200 且回读字节一致、>5 MB → 后端 JSON 413「封面不能超过 5 MB」，即新代码本身的组包与断言已被验证。
 
+交付：分支 `codex/audit-fixes`（5 个提交：`ea8c7a5` 打卡竞态、`adc26fe` 封面上限、`0ba86b8` 格式检查与契约文档、`e5b6b8f` 用例细化、`7cf6ef1` 交接文档）推送后，分支 CI [Actions #36725979848](https://github.com/zhigu34/digital-life/actions/runs/36725979848)（head `e5b6b8f`）的 backend、frontend、docker-e2e 三个 job 全部 success —— 其中 docker-e2e 跑的是**真实 nginx 前的 3 MB 封面上传与 >5 MB 的 JSON 413**，是本机无 Docker 时验不到的那一跳。按既有授权 `git merge --ff-only` 合入 `main` 并推送（`a2ed5bb..7cf6ef1`），main CI [Actions #36729785880](https://github.com/zhigu34/digital-life/actions/runs/36729785880)（head `7cf6ef1`，run #180）同样三个 job 全部 success。未执行 NAS 部署，仍由用户运行 `git pull --ff-only && ./deploy`。
 
 ## 2026-09-27 追剧卡片：封面与卡片齐平
 
