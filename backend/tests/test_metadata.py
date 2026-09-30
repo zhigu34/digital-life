@@ -309,6 +309,36 @@ def test_upload_poster_stores_file_and_marks_local(workspace):
     assert served.headers["content-type"] == "image/png"
 
 
+def test_upload_poster_accepts_phone_sized_files_and_enforces_the_cap(workspace):
+    """A 3 MB photo must be accepted; only files over MAX_POSTER_BYTES are refused.
+
+    The limit is deliberately generous because covers are uploaded from a phone.
+    Anything the proxy rejects below it (see frontend/nginx.conf) would look like
+    a generic upload failure in the UI, so this test also pins the app-side cap
+    that the reverse proxy has to be configured for.
+    """
+    client, headers, _ = workspace
+    show = _make_show(client, headers)
+    photo = PNG_1x1 + b"\x00" * 3_000_000
+    accepted = client.put(
+        f"/api/shows/{show['id']}/poster",
+        files={"file": ("photo.png", photo, "image/png")},
+        headers=headers,
+    )
+    assert accepted.status_code == 200, accepted.text
+
+    oversized = PNG_1x1 + b"\x00" * metadata_module.MAX_POSTER_BYTES
+    rejected = client.put(
+        f"/api/shows/{show['id']}/poster",
+        files={"file": ("huge.png", oversized, "image/png")},
+        headers=headers,
+    )
+    assert rejected.status_code == 413
+    # The rejected upload must not have replaced the cover that was accepted.
+    served = client.get(f"/api/shows/{show['id']}/poster", headers=headers)
+    assert served.content == photo
+
+
 def test_upload_poster_rejects_wrong_type_and_empty(workspace):
     client, headers, _ = workspace
     show = _make_show(client, headers)
