@@ -42,6 +42,12 @@ def directive(block, name):
     return match.group(1).strip() if match else None
 
 
+def server_level_limit():
+    """Server-scope directives sit before the first `location` block."""
+    head = NGINX_CONF.read_text().split('location', 1)[0]
+    return directive(head, 'client_max_body_size')
+
+
 class UploadLimitTest(unittest.TestCase):
     def test_api_location_allows_a_full_poster_upload(self):
         configured = directive(api_location_block(), 'client_max_body_size')
@@ -56,7 +62,7 @@ class UploadLimitTest(unittest.TestCase):
         )
 
     def test_static_requests_keep_the_tight_default(self):
-        server_level = directive(NGINX_CONF.read_text(), 'client_max_body_size')
+        server_level = server_level_limit()
         self.assertIsNotNone(server_level, 'the server-level body limit must stay explicit')
         self.assertLess(
             size_in_bytes(server_level), poster_limit(),
