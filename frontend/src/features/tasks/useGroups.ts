@@ -76,7 +76,21 @@ export function useGroups(sync: (groups: TaskGroup[]) => void, userId: number) {
     }
   }
 
+  /**
+   * A local change is newer than a list request that is still in flight.
+   *
+   * Without this, the mount-time `load()` could resolve *after* a check-in and
+   * put the pre-check-in rows back (the item looked unchecked although the
+   * completion was saved). Bumping the version drops that stale response, and
+   * clearing `loading` keeps the spinner from waiting for a reply nobody reads.
+   */
+  function supersedeLoads() {
+    loadVersion++;
+    loading.value = false;
+  }
+
   function replaceItem(groupId: number, updated: GroupItem) {
+    supersedeLoads();
     const group = groups.value.find((row) => row.id === groupId);
     if (!group) return;
     const index = group.items.findIndex((item) => item.id === updated.id);
@@ -86,6 +100,7 @@ export function useGroups(sync: (groups: TaskGroup[]) => void, userId: number) {
   }
 
   function replaceGroup(updated: TaskGroup) {
+    supersedeLoads();
     const index = groups.value.findIndex((row) => row.id === updated.id);
     if (index >= 0) groups.value[index] = updated;
     forgetLog(updated.id);
@@ -206,7 +221,7 @@ export function useGroups(sync: (groups: TaskGroup[]) => void, userId: number) {
   }
 
   function reset() {
-    loadVersion++;
+    supersedeLoads();
     groups.value = [];
     logs.value = {};
     logLoading.value = {};
