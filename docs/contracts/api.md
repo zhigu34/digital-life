@@ -2,6 +2,8 @@
 
 Base `/api`, same-origin browser fetch with credentials. JSON, errors `{detail: string}` (validation errors may use FastAPI detail array). All data routes require authentication. All POST/PATCH/DELETE except login require `X-CSRF-Token` matching current session. Login requires same-origin Origin validation when Origin is supplied; all unsafe requests reject conflicting Origin. No public registration/setup endpoints. Administrator initialization via backend CLI.
 
+整站恢复（CLI `restore`）只接受与当前应用版本完全一致的数据库：表、列、类型、外键、唯一约束与迁移版本逐一校验（当前 head 为 Alembic `0011`）。恢复更早版本的备份要先切回与备份匹配的代码，再更新并向前迁移；本节各功能只需记录建表所用的迁移，不再重复恢复版本。
+
 ## Authentication
 - `POST /auth/login` `{username,password}` → `{user,csrf_token}` and HttpOnly session cookie.
 - `GET /auth/session` → `{user,csrf_token}` or 401.
@@ -53,13 +55,15 @@ Backend CLI via `python -m app.cli`: `migrate`, `create-admin --username USER` (
 
 ## 文字随记（2026-09-16）
 
-`GET/POST /api/notes`、`GET/PATCH/DELETE /api/notes/{id}`，与其他集合一致的归属与校验规则。Note：`{id,content,entry_date,created_at}`；content 1–4000 字符必填，entry_date YYYY-MM-DD 必填（允许过去日期补录），created_at 服务器时间。同日多条允许；按 id 倒序返回。导出为 `notes` 数组；导入支持 `notes` 键（旧导出缺省为空）。数据表由 Alembic `0003` 创建；CLI 恢复严格校验 `0003`。
+`GET/POST /api/notes`、`GET/PATCH/DELETE /api/notes/{id}`，与其他集合一致的归属与校验规则。Note：`{id,content,entry_date,created_at}`；content 1–4000 字符必填，entry_date YYYY-MM-DD 必填（允许过去日期补录），created_at 服务器时间。同日多条允许；按 id 倒序返回。导出为 `notes` 数组；导入支持 `notes` 键（旧导出缺省为空）。数据表由 Alembic `0003` 创建。
 
 ## 追番元数据搜索（2026-09-16，可选联网功能）
 
 `GET /api/shows/metadata?keyword=1..80&media_type=anime|tv|movie&source=bangumi|tmdb`（登录会话）→ `{results:[{source,source_id,source_url,title,original_title,air_date,release_year,total_episodes,platform,image,seasons,air_status}]}`，最多 8 条。`source_url` 为 bangumi `https://bgm.tv/subject/{id}` 或 tmdb `https://www.themoviedb.org/{tv|movie}/{id}`；`release_year` 取首播/上映日期前四位，缺失或非法为 null。实现与路由位于 `app/shows/metadata.py`。数据源由前端显式选择：bangumi（type 2 动画 / type 6 三次元，image 来自 lain.bgm.tv）或 tmdb（需 `DIGITAL_LIFE_TMDB_API_KEY`，逐候选拉取详情获得 seasons 与 air_status：airing/ended/upcoming/released，image 来自 image.tmdb.org）。仅在用户手动触发时调用一次；未知 media_type/source 400、TMDB 未配置 key 400、关键词空白/超长 422、上游任何故障 502、功能禁用 503。
 
-`GET /api/shows/{id}/poster`（登录会话）返回该条目的封面图片：后端仅从 image.tmdb.org / lain.bgm.tv 白名单主机下载（上限 5MB，JPEG/PNG/WebP），按账号归属校验，缓存于数据目录 `posters/`，响应 `Cache-Control: private, max-age=604800`；无封面 404、来源不授信 400、下载失败 502。Show 记录新增可选字段 `source/source_id/poster_path/seasons/air_status`（Alembic `0004`），导出/导入完整支持。不落库、不自动写入；该路由注册在通用 `/api/shows/{id}` 之前。
+`GET /api/shows/{id}/poster`（登录会话）返回该条目的封面图片：后端仅从 image.tmdb.org / lain.bgm.tv 白名单主机下载（上限 5MB，JPEG/PNG/WebP），按账号归属校验，缓存于数据目录 `posters/{id}.img`，响应 `Cache-Control: private, max-age=604800`；无封面 404、来源不授信 400、下载失败 502。Show 记录新增可选字段 `source/source_id/poster_path/seasons/air_status`（Alembic `0004`），导出/导入完整支持。`poster_path` 只记录来源（白名单 URL 或 `local:upload`），图片字节按账号存在数据目录、不进数据库；该路由注册在通用 `/api/shows/{id}` 之前。
+
+`PUT /api/shows/{id}/poster`（登录会话 + CSRF）上传本地封面：`multipart/form-data` 的单字段 `file`，只接受 JPEG / PNG / WebP（先看部件 `Content-Type`，声明不可用时按文件头识别），空文件 400、超过 `MAX_POSTER_BYTES`（5 MB）413、类型不符 415。成功后覆盖写入 `posters/{id}.img` 并把 `poster_path` 置为 `local:upload`，返回更新后的 Show。**反向代理的请求体上限不得低于 5 MB**：`frontend/nginx.conf` 在 `location /api/` 设为 `6m`（服务级仍是 `1m`，静态请求不需要大 body），`tests/deploy/test_upload_limits.py` 把这两侧的数字钉在一起。
 
 ## 长期任务（2026-09-26，取代原「打卡」）
 
@@ -72,11 +76,11 @@ Backend CLI via `python -m app.cli`: `migrate`, `create-admin --username USER` (
 - 归属一律由会话决定：别人的分组 404；项只能通过自己的分组解析，分组与项不匹配同样 404。删除分组级联删除项与完成记录，删除项级联删除自己的记录。
 - 列表接口用固定条数查询（分组 → 项 → 完成窗口 → 计数），不随分组或项的数量增长。
 - 导出为 `task_groups`、`task_group_items`、`task_completions`（均为扁平数组，靠 `id` 互相引用）。导入要求项必须指向文件内的分组、分组至少一项、同项同日不重复，任一条不合法整体 422 且不改动现有数据。**旧导出的 `checkins` + `checkin_logs` 仍被接受**：`kind='daily'` 的项转成一个分组 + 一个 `repeat_unit='day'` 的打卡项（`start_date` 取最早完成日，避免历史凭空多出漏做），`kind='ongoing'` 依旧转成在做项目。
-- 数据表 `task_groups` / `task_group_items` / `task_completions` 由 Alembic `0011` 创建，同一迁移把 `checkins`/`checkin_logs` 的数据搬进新表并删除旧表；CLI 恢复严格校验 `0011`。
+- 数据表 `task_groups` / `task_group_items` / `task_completions` 由 Alembic `0011` 创建，同一迁移把 `checkins`/`checkin_logs` 的数据搬进新表并删除旧表。
 
 ## 在做（2026-09-16）
 
-`GET/POST /api/projects`、`GET/PATCH/DELETE /api/projects/{id}`，通用集合规则。Project：`{id,title,notes,status:'active'|'paused'|'done',created_at}`，title 1–120，notes ≤4000，status 默认 active。导出为 `projects`；导入支持，且旧导出中 `checkins.kind=='ongoing'` 的行仍会转换为 projects（其打卡记录以文字摘要并入 notes）。Alembic `0006` 建表并把已有 ongoing 打卡迁入 projects；CLI 恢复严格校验 `0006`。
+`GET/POST /api/projects`、`GET/PATCH/DELETE /api/projects/{id}`，通用集合规则。Project：`{id,title,notes,status:'active'|'paused'|'done',created_at}`，title 1–120，notes ≤4000，status 默认 active。导出为 `projects`；导入支持，且旧导出中 `checkins.kind=='ongoing'` 的行仍会转换为 projects（其打卡记录以文字摘要并入 notes）。Alembic `0006` 建表并把已有 ongoing 打卡迁入 projects。
 
 ## 记账（2026-09-25，账本 2026-09-26）
 
@@ -117,4 +121,4 @@ Entry：`{id,occurred_on,kind,amount_cents,currency,book_id,account_id,from_acco
 
 `POST /api/bookmarks/title` `{url}` → `{title}`，**仅用户点击「获取标题」时调用**。后端读取目标页 `<title>`（去标签、`html.unescape`、折叠空白、截断到 160），8 秒超时、最多读 2MB、只接受 `text/*`、手动跟随最多 3 跳且每跳重新校验主机；主机为内网/回环/链路本地/保留地址时 422（域名会先解析再判定，防止指向私网的公网域名），非网页、HTTP ≥400、无标题、重定向过多同样 422；`DIGITAL_LIFE_DISABLE_METADATA=true` 时 503。站点图标不经过后端：由浏览器直接请求 `{origin}/favicon.ico`，失败时前端降级为首字母色块。
 
-导出为 `bookmarks` 数组（含 `visit_count` 与 `last_visited_at`）；导入支持 `bookmarks` 键，旧导出缺省按空处理（导入是整体替换，缺键即清空）。数据表由 Alembic `0009` 创建；CLI 恢复严格校验 `0009`。
+导出为 `bookmarks` 数组（含 `visit_count` 与 `last_visited_at`）；导入支持 `bookmarks` 键，旧导出缺省按空处理（导入是整体替换，缺键即清空）。数据表由 Alembic `0009` 创建。

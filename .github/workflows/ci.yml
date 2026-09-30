@@ -24,7 +24,7 @@ jobs:
           python-version: '3.12'
       - run: uv sync --frozen --dev
         working-directory: backend
-      - run: uv run ruff check . && uv run pytest
+      - run: uv run ruff check . && uv run ruff format --check . && uv run pytest
         working-directory: backend
       - name: Deployment behavior and shell syntax
         run: |

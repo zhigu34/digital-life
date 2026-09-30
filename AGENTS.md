@@ -134,6 +134,7 @@ E2E 会创建多个测试账号和生活记录；只对独立测试环境运行�
 - 模型/迁移版本变化时同步审视 CLI 恢复支持的版本及验证逻辑。旧版本恢复需匹配代码，然后向前迁移。
 - `deploy` 按内容哈希选择构建服务；构建成功前保留旧服务。后台迁移前暂停写入、做一致性备份，最后经 Web 入口验证健康才记录成功状态。
 - 仅前端公开端口，默认 NAS 8090；后端 8000 只在 Docker 内网开放。Compose 需能恢复意外停止的未改动服务。
+- 反向代理的请求体上限不得低于应用自身的限制：`frontend/nginx.conf` 必须在 `location /api/` 覆盖封面所需的 `MAX_POSTER_BYTES`（5 MB，现设 `6m`），服务级默认保持 `1m` 只放静态请求。两侧数字由 `tests/deploy/test_upload_limits.py` 钉住，改任意一侧都要一起改。
 - Nginx 使用 Docker DNS 动态解析后端，避免独立更新后代理旧 IP。注意 location 内 `add_header` 会影响 server 级头继承。
 - 不执行全局 Docker prune，不使用 `git reset --hard` 或删除数据目录“修复”部署。升级失败保留现场、日志、备份和真实失败退出码。
 - `.env`、`data/`、`backups/`、`logs/`、`.local/`、测试报告、依赖目录均不得提交。

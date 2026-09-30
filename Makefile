@@ -1,7 +1,7 @@
 .PHONY: test dev-api dev-web deploy logs
 
 test:
-	cd backend && uv run ruff check . && uv run pytest
+	cd backend && uv run ruff check . && uv run ruff format --check . && uv run pytest
 	cd frontend && npm test && npm run build
 	python3 -m unittest discover -s tests/deploy -v
 

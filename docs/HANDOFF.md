@@ -1,5 +1,28 @@
 # Digital Life 接手状态
 
+## 2026-09-30 项目审计：封面上传上限对齐、长期任务竞态、契约与 CI 收口
+
+用户要求对整个项目做审计，随后要求修复。审计是只读的（未改任何文件），结论见下方「审计之后仍未处理」；本轮只落地 P1–P4 四项修复。
+
+审计发现的四条（均已复现或核对）：
+
+1. **P1 封面图片 1–5 MB 必然上传失败（只在部署环境暴露）**：`frontend/nginx.conf` 是服务级 `client_max_body_size 1m`，而后端允许到 `MAX_POSTER_BYTES = 5 MB`。开发环境走 Vite 代理没有这个限制，所以本地与 E2E 都不会发现；NAS 上 nginx 会在转发前用 HTML 413 截断，前端 `api.ts` 的 `uploadPoster` 只能报「上传失败，请重试」。实测（直连后端）：1.08 MB → 200、2.43 MB → 200、6.00 MB → 413 `{"detail":"封面不能超过 5 MB"}`。
+2. **P2 长期任务打卡与在途 `GET /api/groups` 的响应竞态**（即 HANDOFF 2026-09-27 记的那条偶发）：`useGroups` 的 `loadVersion` 守卫只覆盖 `load()`，`check()` / `saveItem()` / `replaceGroup()` 不递增序号，挂载或手动刷新时在途的列表响应后到就会把刚打的卡覆盖掉。
+3. **P3 契约/文档漂移**：`PUT /api/shows/{id}/poster` 已注册但 `api.md` 完全没写，且同段写着封面「不落库、不自动写入」；`api.md` 对「CLI 恢复严格校验版本」有 `0003`/`0006`/`0009`/`0011` 四种互相矛盾的说法（实际是 `cli.py:20` 的 `0011`）；`README.md` 还写着「整站恢复只接受 `0002`」。
+4. **P4 `ruff format --check` 没有入口**：`AGENTS.md` 要求本地同时跑 `ruff check` 与 `ruff format --check`，但 `Makefile` 的 `test` 目标和 CI 的 backend job 都只跑前者。
+
+改法与验证（本轮）：
+
+- `frontend/nginx.conf`：`location /api/` 增加 `client_max_body_size 6m`，**服务级仍是 `1m`**（静态请求不需要大 body）。
+- `useGroups.ts`：新增 `supersedeLoads()`（`loadVersion++` 并清 `loading`），`replaceItem`/`replaceGroup`/`reset` 都调用它 —— 任何本地变更都让在途列表响应失效。
+- 回归用例（**先证明它们能抓到旧行为**：把两个实现文件 `git stash` 后两条用例都失败，恢复后通过）：`frontend/tests/useGroups.test.ts` 3 项（在途刷新覆盖打卡 `expected [] to deeply equal ['2026-09-30']`、变更后不残留 loading、未被取代的加载照常生效）；`tests/deploy/test_upload_limits.py` 2 项（`location /api/` 的上限 ≥ `MAX_POSTER_BYTES`；服务级默认必须仍小于它，防止「全局放宽」这种改法）；`backend/tests/test_metadata.py` 新增 1 项（3 MB 照片 200 且落地字节一致、超过上限 413 且不覆盖已接受的封面）。
+- `scripts/ci-smoke.py`：container E2E 里经**公开入口**（8090）上传 3 MB 封面（200 + 回读字节一致），再上传 >5 MB 断言 413 且响应体是后端的 JSON（`5 MB` 文案）—— 这条能在 CI 里直接抓住「代理比应用更严」。
+- `Makefile` 与 `.github/workflows/ci.yml` 的 backend 步骤都补上 `uv run ruff format --check .`。
+- `docs/contracts/api.md`：补 `PUT /api/shows/{id}/poster` 契约（multipart 单字段 `file`、JPEG/PNG/WebP、空 400 / 超限 413 / 类型 415、`poster_path` 置 `local:upload`、代理上限必须 ≥5 MB）；恢复版本改为头部一句「只接受与当前 head 一致的数据库（现为 `0011`）」并删掉逐功能的过时断言；`README.md` 同步。`AGENTS.md` 增加一条硬约定（代理上限不得低于应用上限，两侧数字由 `tests/deploy/test_upload_limits.py` 钉住）。
+
+验证：后端 `ruff check` + `ruff format --check` 通过、`pytest` 207 项通过（新增 1 项）；前端 Vitest 79 项通过（新增 3 项）、`vue-tsc` 与生产构建通过；`tests/deploy` 21 项通过（新增 2 项）；本地 Playwright 52 项（桌面 + 手机）全绿。本地无 Docker（`docker: command not found`），因此容器内 nginx 的转发那一跳仍由 GitHub Actions 的 docker-e2e 验证（`ci-smoke.py` 新增的断言就是在这一跳上做检查）；`ci-smoke.py` 的 multipart 代码同段复用到本机直连后端跑过一次：3 MB → 200 且回读字节一致、>5 MB → 后端 JSON 413「封面不能超过 5 MB」，即新代码本身的组包与断言已被验证。
+
+
 ## 2026-09-27 追剧卡片：封面与卡片齐平
 
 用户报「优化追剧片单的卡片，让高度跟封面图片齐平」。先量化再改：写了量测脚本 `.local/shows-card-measure.mjs`，它造一个带真封面的账号（用 zlib 手写 PNG 生成三种比例、带红框与对角线的测试海报），量卡片 / 封面框 / 图片三个盒子，并算出 `object-fit` 之后的实际绘制尺寸。
@@ -264,9 +287,14 @@
 2. NAS 首次部署已于 2026-09-16 由用户确认成功（用户反馈；本会话未远程连接 NAS 复核）。
 3. 用户在 NAS 执行 `git pull --ff-only && ./deploy`（迁移前 deploy 会自动备份旧库）。`c7439f8` 修复了 NAS 首次部署中「Web 入口到后端的健康检查」被 backend 容器出网代理拦截的问题，重新部署即可通过；基线此前未记录，本次会重新构建并落库。累计包含 Alembic `0003`–`0008` 与新增 `DIGITAL_LIFE_DISABLE_METADATA`、`DIGITAL_LIFE_TMDB_API_KEY` 配置项；追剧元数据搜索覆盖动漫、剧集、电影（双源可选，封面后端代理）；打卡回归纯每日必做，「在做」为独立功能；移动端底部导航为 5 主入口 + 更多抽屉；「周期费用」已扩为记账模块（页面键仍为 `expenses`）。
 4. 如后续通过域名公网访问，按 README 配置 HTTPS、Secure Cookie 和可信 Origin；建议先补登录失败限速和 NAS 侧自动定期备份（2026-09-16 评审提出，尚未实施，仅内网使用时可放缓）。
-5. CI 的 backend job 只跑 `ruff check`，未跑 `ruff format --check`（`AGENTS.md` 要求本地两者都跑），导致 `main` 上 `app/shows/router.py`、`service.py` 长期格式漂移，已归位。建议给 CI 补上 format check，避免再次漂移。
+5. ~~CI 的 backend job 只跑 `ruff check`~~ **已修（2026-09-30）**：CI 的 backend 步骤与 `Makefile` 的 `test` 目标都补上了 `uv run ruff format --check .`，`AGENTS.md` 要求的本地两项检查现在有入口也有人在 CI 上守。
 6. `frontend/` 目前无 eslint/prettier 配置，前端写法无自动约束（`App.vue` 存在超长单行压缩写法）。若引入 lint 基线，建议单独一轮做，不要与功能改动混在同一 diff。
 7. 当前没有已知阻断功能使用的问题；后续功能继续从 `main` 创建新的 `codex/` 分支。用户已授权固定交付流程：分支 CI 全绿后直接合入 `main` 推送，NAS 部署由用户执行（见 AGENTS.md 协作与交付）。
+8. **2026-09-30 审计之后仍未处理**（都不是当前功能阻断项，按需单独立项）：
+   - `ledger_entries` 的 `account_id`/`from_account_id`/`to_account_id`/`category_id`/`payee_id` 五个外键列没有索引（只有 `(user_id, occurred_on)`），删除守卫与按账户筛选在数据量上来后是全表扫；`ledger_accounts` 也没有 `(user_id, name)` 唯一约束（同域的 `ledger_categories`/`ledger_payees`/`ledger_books` 都有），账户允许重名。要做就单独一轮 `0012`（加约束前先扫存量重名）。
+   - 响应头没有 CSP / HSTS / Permissions-Policy；`index.html` 有内联主题脚本，上 CSP 需要 nonce 或 hash。登录没有失败限速（第 4 条的旧建议）。仅内网使用可放缓，公网暴露前必须先做限速。
+   - 书签标题抓取是「先 `getaddrinfo` 判定、再由 httpx 重新解析」，存在理论上的 DNS rebinding 窗口（逐跳重校验已实现）。
+   - 仓库里那份 `docs/superpowers/specs/2026-09-27-architecture-refactor-design.md`（整体架构评估与重构方案，P0–P6 分阶段）本轮随修复一并提交入库，避免只存在于本地工作区；是否执行其中 P1/P2（前端外壳与路由）仍待用户拍板。
 
 ## 本地与 Git 状态提示
 
